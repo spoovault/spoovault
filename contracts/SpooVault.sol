@@ -85,6 +85,7 @@ contract SpooVault is ERC721, Ownable {
     mapping(uint256 => string) public tokenURIs;
     mapping(address => uint256[]) private _ownedTokens;
     mapping(uint256 => uint256) private _ownedTokensIndex;
+    uint256 private _totalSupply;
     
     // Events
     event VaultCreated(uint256 indexed vaultId, address indexed creator, string name);
@@ -305,6 +306,7 @@ contract SpooVault is ERC721, Ownable {
         uint256 tokenId = _tokenIdCounter.current();
         
         _safeMint(to, tokenId);
+        _totalSupply += 1;
         tokenURIs[tokenId] = tokenURI;
         tokenVaultMapping[tokenId] = vaultId;
         
@@ -330,6 +332,7 @@ contract SpooVault is ERC721, Ownable {
         }
         
         _burn(tokenId);
+        _totalSupply -= 1;
         delete tokenVaultMapping[tokenId];
         delete tokenURIs[tokenId];
         
@@ -386,6 +389,20 @@ contract SpooVault is ERC721, Ownable {
         }
         
         return pending;
+    }
+
+    /**
+     * @dev Return total minted tokens minus burned tokens.
+     */
+    function totalSupply() external view returns (uint256) {
+        return _totalSupply;
+    }
+
+    /**
+     * @dev Return token id at index for an owner (ERC721Enumerable-like).
+     */
+    function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256) {
+        return _ownedTokens[owner][index];
     }
     
     // Override required functions
