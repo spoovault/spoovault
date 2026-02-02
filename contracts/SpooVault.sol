@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
@@ -10,7 +9,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
  * @title SpooVault
  * @dev Decentralized NFT-powered multi-signature encrypted document vault
  */
-contract SpooVault is ERC721, ERC721Enumerable, Ownable {
+contract SpooVault is ERC721, Ownable {
     using Counters for Counters.Counter;
     
     Counters.Counter private _tokenIdCounter;
@@ -57,6 +56,22 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
         bool accepted;
         uint256 expiresAt;
     }
+
+    // Custom errors (cheaper than revert strings)
+    error AtLeastOneGuardian();
+    error InvalidApprovalThreshold();
+    error VaultNotActive();
+    error OnlyGuardian();
+    error IPFSHashRequired();
+    error DocumentNotExist();
+    error AlreadyHasAccess();
+    error NFTRequired();
+    error RequestNotPending();
+    error RequestExpired();
+    error AlreadyApproved();
+    error NoValidInvite();
+    error InviteExpired();
+    error NotOwnerOrApproved();
     
     // Mappings
     mapping(uint256 => Vault) public vaults;
@@ -68,6 +83,8 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
     mapping(address => GuardianInvite[]) public guardianInvites;
     mapping(uint256 => mapping(address => bool)) public hasApprovedRequest;
     mapping(uint256 => string) public tokenURIs;
+    mapping(address => uint256[]) private _ownedTokens;
+    mapping(uint256 => uint256) private _ownedTokensIndex;
     
     // Events
     event VaultCreated(uint256 indexed vaultId, address indexed creator, string name);
@@ -92,9 +109,8 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
         address[] memory guardians,
         uint256 approvalThreshold
     ) external returns (uint256) {
-        require(guardians.length > 0, "At least one guardian required");
-        require(approvalThreshold > 0 && approvalThreshold <= guardians.length, 
-                "Invalid approval threshold");
+        if (guardians.length == 0) revert AtLeastOneGuardian();
+        if (approvalThreshold == 0 || approvalThreshold > guardians.length) revert InvalidApprovalThreshold();
         
         _vaultIdCounter.increment();
         uint256 vaultId = _vaultIdCounter.current();
@@ -136,21 +152,21 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      * @dev Accept guardian invitation
      */
     function acceptGuardianInvite(uint256 vaultId) external {
-        require(vaults[vaultId].isActive, "Vault not active");
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
         
         bool found = false;
         GuardianInvite[] storage invites = guardianInvites[msg.sender];
         
         for (uint i = 0; i < invites.length; i++) {
             if (invites[i].vaultId == vaultId && !invites[i].accepted) {
-                require(invites[i].expiresAt > block.timestamp, "Invite expired");
+                if (invites[i].expiresAt <= block.timestamp) revert InviteExpired();
                 invites[i].accepted = true;
                 found = true;
                 break;
             }
         }
         
-        require(found, "No valid invitation found");
+        if (!found) revert NoValidInvite();
         emit GuardianAdded(vaultId, msg.sender);
     }
     
@@ -163,9 +179,9 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
         string memory ipfsHash,
         AccessLevel requiredAccess
     ) external returns (uint256) {
-        require(vaults[vaultId].isActive, "Vault not active");
-        require(isGuardian[vaultId][msg.sender], "Only guardians can add documents");
-        require(bytes(ipfsHash).length > 0, "IPFS hash required");
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
+        if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
+        if (bytes(ipfsHash).length == 0) revert IPFSHashRequired();
         
         _documentIdCounter.increment();
         uint256 documentId = _documentIdCounter.current();
@@ -192,22 +208,23 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      * @dev Request access to a document
      */
     function requestAccess(uint256 documentId) external returns (uint256) {
-        require(documents[documentId].id != 0, "Document does not exist");
-        require(!hasAccess[documentId][msg.sender], "Already has access");
+        if (documents[documentId].id == 0) revert DocumentNotExist();
+        if (hasAccess[documentId][msg.sender]) revert AlreadyHasAccess();
         
         // Check if user owns an NFT for this vault
         uint256 vaultId = documents[documentId].vaultId;
         bool hasNFT = false;
         
-        for (uint256 i = 0; i < balanceOf(msg.sender); i++) {
-            uint256 tokenId = tokenOfOwnerByIndex(msg.sender, i);
+        uint256[] storage tokens = _ownedTokens[msg.sender];
+        for (uint256 i = 0; i < tokens.length; i++) {
+            uint256 tokenId = tokens[i];
             if (tokenVaultMapping[tokenId] == vaultId) {
                 hasNFT = true;
                 break;
             }
         }
         
-        require(hasNFT, "NFT required for access request");
+        if (!hasNFT) revert NFTRequired();
         
         // Create access request
         uint256 requestId = uint256(keccak256(abi.encodePacked(
@@ -233,12 +250,12 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      */
     function approveAccess(uint256 requestId) external {
         AccessRequest storage request = accessRequests[requestId];
-        require(request.status == RequestStatus.PENDING, "Request not pending");
-        require(request.expiresAt > block.timestamp, "Request expired");
+        if (request.status != RequestStatus.PENDING) revert RequestNotPending();
+        if (request.expiresAt <= block.timestamp) revert RequestExpired();
         
         uint256 vaultId = documents[request.documentId].vaultId;
-        require(isGuardian[vaultId][msg.sender], "Only guardians can approve");
-        require(!hasApprovedRequest[requestId][msg.sender], "Already approved");
+        if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
+        if (hasApprovedRequest[requestId][msg.sender]) revert AlreadyApproved();
         
         hasApprovedRequest[requestId][msg.sender] = true;
         request.approvedBy.push(msg.sender);
@@ -266,9 +283,9 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      * @dev Revoke access from user
      */
     function revokeAccess(uint256 documentId, address user) external {
-        require(documents[documentId].id != 0, "Document does not exist");
+        if (documents[documentId].id == 0) revert DocumentNotExist();
         uint256 vaultId = documents[documentId].vaultId;
-        require(isGuardian[vaultId][msg.sender], "Only guardians can revoke access");
+        if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
         
         hasAccess[documentId][user] = false;
         delete userAccessLevel[documentId][user];
@@ -281,8 +298,8 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      */
     function mintAccessToken(uint256 vaultId, address to, string memory tokenURI) 
         external returns (uint256) {
-        require(vaults[vaultId].isActive, "Vault not active");
-        require(isGuardian[vaultId][msg.sender], "Only guardians can mint tokens");
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
+        if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
         
         _tokenIdCounter.increment();
         uint256 tokenId = _tokenIdCounter.current();
@@ -299,7 +316,8 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
      * @dev Burn NFT access token (revoke all access)
      */
     function burnAccessToken(uint256 tokenId) external {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not token owner or approved");
+        address owner = ownerOf(tokenId);
+        if (!_isAuthorized(owner, msg.sender, tokenId)) revert NotOwnerOrApproved();
         
         uint256 vaultId = tokenVaultMapping[tokenId];
         
@@ -373,28 +391,38 @@ contract SpooVault is ERC721, ERC721Enumerable, Ownable {
     // Override required functions
     function _update(address to, uint256 tokenId, address auth)
         internal
-        override(ERC721, ERC721Enumerable)
+        override(ERC721)
         returns (address)
     {
-        return super._update(to, tokenId, auth);
+        address from = super._update(to, tokenId, auth);
+        if (from != address(0)) {
+            _removeTokenFromOwnerEnumeration(from, tokenId);
+        }
+        if (to != address(0)) {
+            _addTokenToOwnerEnumeration(to, tokenId);
+        }
+        return from;
     }
-    
-    function _increaseBalance(address account, uint128 value)
-        internal
-        override(ERC721, ERC721Enumerable)
-    {
-        super._increaseBalance(account, value);
+
+    function _addTokenToOwnerEnumeration(address to, uint256 tokenId) private {
+        _ownedTokensIndex[tokenId] = _ownedTokens[to].length;
+        _ownedTokens[to].push(tokenId);
     }
-    
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        override(ERC721, ERC721Enumerable)
-        returns (bool)
-    {
-        return super.supportsInterface(interfaceId);
+
+    function _removeTokenFromOwnerEnumeration(address from, uint256 tokenId) private {
+        uint256 lastIndex = _ownedTokens[from].length - 1;
+        uint256 tokenIndex = _ownedTokensIndex[tokenId];
+
+        if (tokenIndex != lastIndex) {
+            uint256 lastTokenId = _ownedTokens[from][lastIndex];
+            _ownedTokens[from][tokenIndex] = lastTokenId;
+            _ownedTokensIndex[lastTokenId] = tokenIndex;
+        }
+
+        _ownedTokens[from].pop();
+        delete _ownedTokensIndex[tokenId];
     }
-    
+
     // Additional mapping for token to vault
     mapping(uint256 => uint256) private tokenVaultMapping;
 }
