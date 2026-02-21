@@ -287,7 +287,7 @@ const AppLayout = () => {
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold truncate">SpooVault</p>
-                  <p className="text-xs text-gray-400 truncate">family.spoovault.app</p>
+                  <p className="text-xs text-gray-400 truncate">spoovault.web.app</p>
                 </div>
                 <FiChevronDown className="text-gray-500 text-sm" />
               </div>
