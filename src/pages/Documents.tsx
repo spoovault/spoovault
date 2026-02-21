@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Card,
   CardBody,
@@ -11,10 +11,6 @@ import {
   TableRow,
   TableCell,
   Chip,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
   Modal,
   ModalContent,
   ModalHeader,
@@ -25,11 +21,12 @@ import {
 import {
   FiSearch,
   FiFilter,
+  FiChevronDown,
   FiUpload,
   FiFile,
   FiDownload,
   FiEye,
-  FiMoreVertical,
+  FiCopy,
   FiShield,
   FiCalendar,
   FiUser,
@@ -41,6 +38,7 @@ import {
   contractService,
   VaultData,
   DocumentData,
+  AccessRequestData,
 } from "../services/contract.service";
 import {
   decryptData,
@@ -54,6 +52,7 @@ import {
   formatFileSize,
 } from "../utils/helpers";
 import { toast } from "react-hot-toast";
+import { buttonClasses } from "../utils/buttonClasses";
 
 const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
 
@@ -80,29 +79,44 @@ const Documents = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "accessible" | "encrypted">("all");
-  const { isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
+  const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
 
   const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [vaults, setVaults] = useState<VaultData[]>([]);
+  const [activeAccessByDoc, setActiveAccessByDoc] = useState<Record<number, boolean>>({});
+  const [latestRequestByDoc, setLatestRequestByDoc] = useState<Record<number, AccessRequestData | null>>({});
+  const [releaseConditionByDoc, setReleaseConditionByDoc] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [requestingDocId, setRequestingDocId] = useState<number | null>(null);
 
   const [selectedVaultId, setSelectedVaultId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [accessLevel, setAccessLevel] = useState<number>(0);
+  const [releaseCondition, setReleaseCondition] = useState<number>(0);
 
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [lastDocumentId, setLastDocumentId] = useState<number | null>(null);
+  const [keyBackupConfirmed, setKeyBackupConfirmed] = useState(false);
+  const keyImportInputRef = useRef<HTMLInputElement | null>(null);
+  const stepChipClass = "bg-brand-700/12 text-brand-300 border border-brand-700/35";
+  const selectFieldWithIconClass =
+    "h-11 w-full rounded-full border border-gray-700/80 bg-gray-900/75 pl-10 pr-10 text-sm text-gray-100 outline-none transition-colors hover:border-gray-600 focus:border-brand-700/70";
+  const selectFieldClass =
+    "h-11 w-full rounded-full border border-gray-700/80 bg-gray-900/75 px-4 pr-10 text-sm text-gray-100 outline-none transition-colors hover:border-gray-600 focus:border-brand-700/70";
 
   useEffect(() => {
     if (isConnected && provider && signer && isFujiNetwork) {
       contractService.initialize(provider, signer);
       loadData();
     } else {
+      setActiveAccessByDoc({});
+      setLatestRequestByDoc({});
+      setReleaseConditionByDoc({});
       setLoading(false);
     }
-  }, [isConnected, provider, signer, isFujiNetwork]);
+  }, [account, isConnected, provider, signer, isFujiNetwork]);
 
   const loadData = async () => {
     setLoading(true);
@@ -111,12 +125,28 @@ const Documents = () => {
         contractService.fetchVaults(),
         contractService.fetchDocuments(),
       ]);
+
+      const docIds = docsData.map((doc) => doc.id);
+      const accessMap = account
+        ? await contractService.getActiveAccessMap(account, docIds)
+        : {};
+      const requestMap = account
+        ? await contractService.getLatestRequestsForUser(account, docIds)
+        : {};
+      const releaseMap = await contractService.getDocumentReleaseConditionMap(docIds);
+
       setVaults(vaultsData);
       setDocuments(docsData);
+      setActiveAccessByDoc(accessMap);
+      setLatestRequestByDoc(requestMap);
+      setReleaseConditionByDoc(releaseMap);
     } catch (error) {
       console.error("Error loading documents:", error);
       const message = error instanceof Error ? error.message : "Failed to load documents";
       toast.error(message);
+      setActiveAccessByDoc({});
+      setLatestRequestByDoc({});
+      setReleaseConditionByDoc({});
     } finally {
       setLoading(false);
     }
@@ -149,18 +179,92 @@ const Documents = () => {
     }
   };
 
+  const downloadKeyBackupFile = (docId: number, key: string) => {
+    const payload = {
+      version: 1,
+      app: "SpooVault",
+      contract: import.meta.env.VITE_CONTRACT_ADDRESS || "",
+      documentId: docId,
+      key,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `spoovault-doc-${docId}-key-backup.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportKeyBackup = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw) as { documentId?: number | string; key?: string };
+      const documentId = Number(parsed.documentId);
+      const key = (parsed.key || "").trim();
+
+      if (!documentId || !Number.isFinite(documentId)) {
+        throw new Error("Invalid backup file: missing documentId");
+      }
+      if (!/^[a-fA-F0-9]{64}$/.test(key)) {
+        throw new Error("Invalid backup file: key format is not recognized");
+      }
+
+      localStorage.setItem(getKeyStorageKey(documentId), key);
+      toast.success(`Key imported for Document #${documentId}`);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to import key backup");
+    }
+  };
+
+  const handleCloseKeyModal = () => {
+    if (!keyBackupConfirmed) {
+      toast.error("Back up the key before closing this dialog.");
+      return;
+    }
+
+    setShowKeyModal(false);
+    setLastKey(null);
+    setLastDocumentId(null);
+    setKeyBackupConfirmed(false);
+  };
+
   const documentsWithMetadata = useMemo(() => {
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+
     return documents.map((doc) => {
       const metadata = decryptMetadata(doc);
+      const hasChainAccess = !!activeAccessByDoc[doc.id];
+      const hasLocalKey = !!metadata;
+      const latestRequest = latestRequestByDoc[doc.id] ?? null;
+      const isRequestPending =
+        !!latestRequest &&
+        latestRequest.status === 0 &&
+        latestRequest.expiresAt > nowInSeconds;
+
       return {
         doc,
         metadata,
         name: metadata?.name || `Document #${doc.id}`,
         vaultName: vaultNameById[doc.vaultId] || `Vault #${doc.vaultId}`,
-        hasKey: !!metadata,
+        hasChainAccess,
+        hasLocalKey,
+        canDecrypt: hasChainAccess && hasLocalKey,
+        latestRequest,
+        isRequestPending,
+        releaseCondition: releaseConditionByDoc[doc.id] ?? 0,
       };
     });
-  }, [documents, vaultNameById]);
+  }, [documents, vaultNameById, activeAccessByDoc, latestRequestByDoc, releaseConditionByDoc]);
 
   const filteredDocuments = documentsWithMetadata
     .filter((item) => {
@@ -173,8 +277,8 @@ const Documents = () => {
       );
     })
     .filter((item) => {
-      if (filter === "accessible") return item.hasKey;
-      if (filter === "encrypted") return !item.hasKey;
+      if (filter === "accessible") return item.hasChainAccess;
+      if (filter === "encrypted") return !item.hasChainAccess;
       return true;
     });
 
@@ -182,6 +286,13 @@ const Documents = () => {
     if (level === 2) return "admin";
     if (level === 1) return "read_write";
     return "read";
+  };
+
+  const releaseConditionLabel = (condition: number) => {
+    if (condition === 1) return "live_only";
+    if (condition === 2) return "emergency_only";
+    if (condition === 3) return "post_death_only";
+    return "anytime";
   };
 
   const handleUpload = async () => {
@@ -228,7 +339,8 @@ const Documents = () => {
         selectedVaultId,
         encryptedMetadata,
         ipfsResult.hash,
-        accessLevel
+        accessLevel,
+        releaseCondition
       );
 
       if (!documentId) {
@@ -237,6 +349,7 @@ const Documents = () => {
         localStorage.setItem(getKeyStorageKey(documentId), key);
         setLastKey(key);
         setLastDocumentId(documentId);
+        setKeyBackupConfirmed(false);
         setShowKeyModal(true);
         toast.success("Document uploaded successfully");
       }
@@ -244,6 +357,7 @@ const Documents = () => {
       setSelectedFile(null);
       setSelectedVaultId(null);
       setAccessLevel(0);
+      setReleaseCondition(0);
       onClose();
       loadData();
     } catch (error: any) {
@@ -254,6 +368,16 @@ const Documents = () => {
   };
 
   const decryptFileFromIPFS = async (doc: DocumentData) => {
+    if (!account) {
+      throw new Error("Please connect your wallet");
+    }
+
+    const hasAccess = await contractService.hasActiveAccess(doc.id, account);
+    setActiveAccessByDoc((prev) => ({ ...prev, [doc.id]: hasAccess }));
+    if (!hasAccess) {
+      throw new Error("No active on-chain access for this document");
+    }
+
     const key = getStoredKey(doc.id);
     if (!key) {
       throw new Error("Encryption key not found for this document");
@@ -306,7 +430,35 @@ const Documents = () => {
     }
   };
 
-  const accessibleCount = documentsWithMetadata.filter((item) => item.hasKey).length;
+  const handleRequestAccess = async (docId: number) => {
+    if (!isConnected) {
+      toast.error("Please connect your wallet first");
+      await connect();
+      return;
+    }
+
+    if (!isFujiNetwork) {
+      toast.error("Please switch to Avalanche Fuji network");
+      return;
+    }
+
+    setRequestingDocId(docId);
+    try {
+      const requestId = await contractService.requestAccess(docId);
+      if (!requestId) {
+        toast.error("Request submitted but ID was not returned");
+      } else {
+        toast.success(`Access request #${requestId} submitted`);
+      }
+      await loadData();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to request access");
+    } finally {
+      setRequestingDocId(null);
+    }
+  };
+
+  const accessibleCount = documentsWithMetadata.filter((item) => item.hasChainAccess).length;
 
   if (!isConnected) {
     return (
@@ -317,11 +469,11 @@ const Documents = () => {
           </div>
           <h1 className="text-3xl font-bold mb-4">Connect Your Wallet</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-            Connect your wallet to upload and manage encrypted documents on Avalanche.
+            Connect your wallet to upload and manage encrypted family documents on Avalanche.
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover:shadow-xl hover:shadow-brand-800/20"
+            className={buttonClasses.primaryLg}
             onPress={connect}
             startContent={<FiUpload />}
           >
@@ -345,7 +497,7 @@ const Documents = () => {
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-yellow-500 to-orange-500 font-semibold"
+            className={buttonClasses.warningLg}
             onPress={() => window.ethereum && window.ethereum.request({
               method: "wallet_switchEthereumChain",
               params: [{ chainId: "0xA869" }]
@@ -362,18 +514,38 @@ const Documents = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Documents</h1>
+          <h1 className="text-3xl font-bold mb-2">Secure Documents</h1>
           <p className="text-gray-400">
-            Manage encrypted documents across all vaults
+            Manage encrypted files for daily sharing, emergency access, and inheritance plans
           </p>
         </div>
-        <Button
-          className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover-glow"
-          startContent={<FiUpload />}
-          onPress={onOpen}
-        >
-          Upload Document
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <input
+            ref={keyImportInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={async (event) => {
+              const file = event.target.files?.[0] ?? null;
+              await handleImportKeyBackup(file);
+              event.target.value = "";
+            }}
+          />
+          <Button
+            className={`${buttonClasses.ghostMd} w-full sm:w-auto`}
+            startContent={<FiKey />}
+            onPress={() => keyImportInputRef.current?.click()}
+          >
+            Import Key Backup
+          </Button>
+          <Button
+            className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
+            startContent={<FiUpload />}
+            onPress={onOpen}
+          >
+            Upload Document
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -381,7 +553,7 @@ const Documents = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Total Documents</p>
+                <p className="text-gray-400 text-sm">Total Files</p>
                 <p className="text-2xl font-bold">{documents.length}</p>
               </div>
               <div className="p-3 rounded-lg bg-blue-500/20">
@@ -394,7 +566,7 @@ const Documents = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Accessible</p>
+                <p className="text-gray-400 text-sm">Access Allowed</p>
                 <p className="text-2xl font-bold">{accessibleCount}</p>
               </div>
               <div className="p-3 rounded-lg bg-green-500/20">
@@ -407,7 +579,7 @@ const Documents = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Vaults</p>
+                <p className="text-gray-400 text-sm">Access Vaults</p>
                 <p className="text-2xl font-bold">{vaults.length}</p>
               </div>
               <div className="p-3 rounded-lg bg-purple-500/20">
@@ -418,7 +590,7 @@ const Documents = () => {
         </Card>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
         <Input
           placeholder="Search documents..."
           startContent={<FiSearch className="text-gray-400" />}
@@ -426,32 +598,34 @@ const Documents = () => {
           onValueChange={setSearch}
           className="flex-1"
         />
-        <Dropdown>
-          <DropdownTrigger>
-            <Button variant="flat" startContent={<FiFilter />}>
-              Filter
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu onAction={(key) => setFilter(key as typeof filter)}>
-            <DropdownItem key="all">All Documents</DropdownItem>
-            <DropdownItem key="accessible">Accessible</DropdownItem>
-            <DropdownItem key="encrypted">Encrypted</DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
+        <div className="relative w-full sm:w-52">
+          <FiFilter className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as typeof filter)}
+            className={selectFieldWithIconClass}
+          >
+            <option value="all">All Files</option>
+            <option value="accessible">Access Allowed</option>
+            <option value="encrypted">Locked</option>
+          </select>
+          <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
+        </div>
       </div>
 
       <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
         <CardBody className="p-0">
           <Table aria-label="Documents table" removeWrapper>
             <TableHeader>
-              <TableColumn>DOCUMENT</TableColumn>
+              <TableColumn>FILE</TableColumn>
               <TableColumn>VAULT</TableColumn>
               <TableColumn>STATUS</TableColumn>
               <TableColumn>ACCESS</TableColumn>
+              <TableColumn>RELEASE</TableColumn>
               <TableColumn>ACTIONS</TableColumn>
             </TableHeader>
             <TableBody
-              emptyContent={loading ? "Loading documents..." : "No documents found"}
+              emptyContent={loading ? "Loading files..." : "No files found"}
             >
               {filteredDocuments.map((item) => (
                 <TableRow key={item.doc.id}>
@@ -478,13 +652,21 @@ const Documents = () => {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {item.hasKey ? (
+                    {item.canDecrypt ? (
                       <Chip color="success" variant="flat" size="sm">
-                        Accessible
+                        Decryptable
+                      </Chip>
+                    ) : item.isRequestPending ? (
+                      <Chip color="warning" variant="flat" size="sm">
+                        Request Pending
+                      </Chip>
+                    ) : item.hasChainAccess ? (
+                      <Chip color="warning" variant="flat" size="sm">
+                        Key Missing
                       </Chip>
                     ) : (
-                      <Chip color="warning" variant="flat" size="sm">
-                        Encrypted
+                      <Chip color="danger" variant="flat" size="sm">
+                        Locked
                       </Chip>
                     )}
                   </TableCell>
@@ -504,12 +686,29 @@ const Documents = () => {
                     </Chip>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <Chip
+                      color={
+                        item.releaseCondition === 3
+                          ? "danger"
+                          : item.releaseCondition === 2
+                          ? "warning"
+                          : item.releaseCondition === 1
+                          ? "primary"
+                          : "success"
+                      }
+                      variant="flat"
+                      size="sm"
+                    >
+                      {releaseConditionLabel(item.releaseCondition)}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button
                         isIconOnly
                         variant="light"
                         size="sm"
-                        isDisabled={!item.hasKey}
+                        isDisabled={!item.canDecrypt}
                         onPress={() => handleView(item.doc)}
                       >
                         <FiEye />
@@ -518,28 +717,38 @@ const Documents = () => {
                         isIconOnly
                         variant="light"
                         size="sm"
-                        isDisabled={!item.hasKey}
+                        isDisabled={!item.canDecrypt}
                         onPress={() => handleDownload(item.doc)}
                       >
                         <FiDownload />
                       </Button>
-                      <Dropdown>
-                        <DropdownTrigger>
-                          <Button isIconOnly variant="light" size="sm">
-                            <FiMoreVertical />
-                          </Button>
-                        </DropdownTrigger>
-                        <DropdownMenu
-                          onAction={(key) => {
-                            if (key === "copy") {
-                              navigator.clipboard.writeText(item.doc.ipfsHash);
-                              toast.success("IPFS hash copied");
-                            }
-                          }}
+                      {!item.hasChainAccess && (
+                        <Button
+                          size="sm"
+                          className={buttonClasses.outlineSm}
+                          isDisabled={item.isRequestPending || requestingDocId === item.doc.id}
+                          isLoading={requestingDocId === item.doc.id}
+                          onPress={() => handleRequestAccess(item.doc.id)}
                         >
-                          <DropdownItem key="copy">Copy IPFS Hash</DropdownItem>
-                        </DropdownMenu>
-                      </Dropdown>
+                          {item.isRequestPending ? "Pending" : "Request Access"}
+                        </Button>
+                      )}
+                      <Button
+                        isIconOnly
+                        variant="light"
+                        size="sm"
+                        aria-label="Copy IPFS hash"
+                        onPress={async () => {
+                          try {
+                            await navigator.clipboard.writeText(item.doc.ipfsHash);
+                            toast.success("IPFS hash copied");
+                          } catch {
+                            toast.error("Failed to copy IPFS hash");
+                          }
+                        }}
+                      >
+                        <FiCopy />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -553,37 +762,44 @@ const Documents = () => {
         isOpen={isOpen}
         onClose={onClose}
         size="lg"
-        className="bg-gray-900"
+        backdrop="blur"
+        classNames={{
+          wrapper: "z-[120]",
+          backdrop: "bg-black/70",
+        }}
         scrollBehavior="inside"
         placement="center"
       >
-        <ModalContent className="bg-gray-900 w-[92vw] max-w-2xl max-h-[85vh] overflow-hidden">
-          <ModalHeader className="flex items-center gap-3">
+        <ModalContent className="bg-gray-950 w-[94vw] max-w-2xl max-h-[86vh] overflow-hidden border border-gray-800/90 shadow-2xl">
+          <ModalHeader className="flex items-center gap-3 border-b border-gray-800/80 px-4 sm:px-6 py-4">
             <div className="w-10 h-10 bg-gradient-to-br from-brand-700 to-brand-900 rounded-xl flex items-center justify-center">
               <FiUpload className="text-white" />
             </div>
             <div>
               <h2 className="text-xl font-bold">Upload Document</h2>
-              <p className="text-sm text-gray-400">Encrypt locally, then pin to IPFS</p>
+              <p className="text-sm text-gray-400">Encrypt locally, then pin to IPFS for controlled access and future release</p>
             </div>
           </ModalHeader>
-          <ModalBody className="max-h-[70vh] overflow-y-auto">
+          <ModalBody className="modal-scroll max-h-[70vh] overflow-y-auto px-4 sm:px-6 py-4">
             <div className="space-y-5">
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4 space-y-3">
+              <div className="rounded-2xl border border-gray-800/85 bg-gray-900/78 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold">File</p>
+                    <p className="font-semibold">Document</p>
                     <p className="text-xs text-gray-400">Select the document to encrypt</p>
                   </div>
-                  <Chip size="sm" variant="flat" className="bg-brand-700/10 text-brand-500">
+                  <Chip size="sm" variant="flat" className={stepChipClass}>
                     Step 1
                   </Chip>
                 </div>
-                <Input
-                  type="file"
-                  label="Select File"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                />
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-300 font-medium">Select File</p>
+                  <input
+                    type="file"
+                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                    className="block w-full rounded-xl border border-gray-700/80 bg-gray-900/75 px-3 py-2 text-sm text-gray-100 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-200 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-900 hover:file:bg-gray-100"
+                  />
+                </div>
                 {selectedFile && (
                   <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>{selectedFile.name}</span>
@@ -592,59 +808,112 @@ const Documents = () => {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4 space-y-3">
+              <div className="rounded-2xl border border-gray-800/85 bg-gray-900/78 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold">Vault</p>
+                    <p className="font-semibold">Access Vault</p>
                     <p className="text-xs text-gray-400">Choose where to store this file</p>
                   </div>
-                  <Chip size="sm" variant="flat" className="bg-brand-700/10 text-brand-500">
+                  <Chip size="sm" variant="flat" className={stepChipClass}>
                     Step 2
                   </Chip>
                 </div>
-                <Dropdown>
-                  <DropdownTrigger>
-                    <Button variant="flat" className="w-full justify-between">
-                      {selectedVaultId
-                        ? vaultNameById[selectedVaultId] || `Vault #${selectedVaultId}`
-                        : "Select Vault"}
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu onAction={(key) => setSelectedVaultId(Number(key))}>
+                <div className="relative">
+                  <select
+                    value={selectedVaultId ? String(selectedVaultId) : ""}
+                    onChange={(event) => setSelectedVaultId(event.target.value ? Number(event.target.value) : null)}
+                    className={selectFieldClass}
+                  >
+                    <option value="" disabled>
+                      Select Vault
+                    </option>
                     {vaults.map((vault) => (
-                      <DropdownItem key={vault.id}>{vault.name || `Vault #${vault.id}`}</DropdownItem>
+                      <option key={vault.id} value={vault.id}>
+                        {vault.name || `Vault #${vault.id}`}
+                      </option>
                     ))}
-                  </DropdownMenu>
-                </Dropdown>
+                  </select>
+                  <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                </div>
                 {vaults.length === 0 && (
                   <p className="text-sm text-yellow-400">
-                    You need to create a vault before uploading documents.
+                    Create an access vault before uploading files.
                   </p>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4 space-y-3">
+              <div className="rounded-2xl border border-gray-800/85 bg-gray-900/78 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold">Access Level</p>
                     <p className="text-xs text-gray-400">Required access for this document</p>
                   </div>
-                  <Chip size="sm" variant="flat" className="bg-brand-700/10 text-brand-500">
+                  <Chip size="sm" variant="flat" className={stepChipClass}>
                     Step 3
                   </Chip>
                 </div>
-                <Dropdown>
-                  <DropdownTrigger>
-                    <Button variant="flat" className="w-full justify-between">
-                      {accessLabel(accessLevel)} access
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu onAction={(key) => setAccessLevel(Number(key))}>
-                    <DropdownItem key={0}>read</DropdownItem>
-                    <DropdownItem key={1}>read_write</DropdownItem>
-                    <DropdownItem key={2}>admin</DropdownItem>
-                  </DropdownMenu>
-                </Dropdown>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Button
+                    className={accessLevel === 0 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setAccessLevel(0)}
+                  >
+                    read
+                  </Button>
+                  <Button
+                    className={accessLevel === 1 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setAccessLevel(1)}
+                  >
+                    read_write
+                  </Button>
+                  <Button
+                    className={accessLevel === 2 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setAccessLevel(2)}
+                  >
+                    admin
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">Selected: {accessLabel(accessLevel)}</p>
+              </div>
+
+              <div className="rounded-2xl border border-gray-800/85 bg-gray-900/78 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">Release Condition</p>
+                    <p className="text-xs text-gray-400">Define when this document can be requested</p>
+                  </div>
+                  <Chip size="sm" variant="flat" className={stepChipClass}>
+                    Step 4
+                  </Chip>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Button
+                    className={releaseCondition === 0 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setReleaseCondition(0)}
+                  >
+                    anytime
+                  </Button>
+                  <Button
+                    className={releaseCondition === 1 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setReleaseCondition(1)}
+                  >
+                    live_only
+                  </Button>
+                  <Button
+                    className={releaseCondition === 2 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setReleaseCondition(2)}
+                  >
+                    emergency_only
+                  </Button>
+                  <Button
+                    className={releaseCondition === 3 ? buttonClasses.primarySm : buttonClasses.ghostSm}
+                    onPress={() => setReleaseCondition(3)}
+                  >
+                    post_death_only
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Selected: {releaseConditionLabel(releaseCondition)}
+                </p>
               </div>
 
               <div className="p-4 bg-brand-700/10 border border-brand-700/20 rounded-2xl">
@@ -655,17 +924,17 @@ const Documents = () => {
               </div>
             </div>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={onClose} isDisabled={uploading}>
+          <ModalFooter className="border-t border-gray-800/80 px-4 sm:px-6 py-3 flex-col-reverse sm:flex-row gap-2">
+            <Button className={`${buttonClasses.ghostMd} w-full sm:w-auto`} onPress={onClose} isDisabled={uploading}>
               Cancel
             </Button>
             <Button
-              className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold"
+              className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
               onPress={handleUpload}
               isLoading={uploading}
               isDisabled={vaults.length === 0 || !selectedFile || !selectedVaultId || uploading}
             >
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? "Uploading..." : "Upload Document"}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -673,28 +942,47 @@ const Documents = () => {
 
       <Modal
         isOpen={showKeyModal}
-        onClose={() => setShowKeyModal(false)}
+        onClose={handleCloseKeyModal}
         size="md"
         className="bg-gray-900"
         scrollBehavior="inside"
         placement="center"
       >
         <ModalContent className="bg-gray-900 w-[92vw] max-w-lg max-h-[80vh] overflow-hidden">
-          <ModalHeader>Encryption Key</ModalHeader>
+          <ModalHeader>Encryption Key Backup</ModalHeader>
           <ModalBody className="max-h-[70vh] overflow-y-auto">
             <p className="text-gray-400 text-sm">
-              Save this key securely. You will need it to decrypt Document #{lastDocumentId}.
+              Save this key securely. Owners, guardians, or approved beneficiaries may need it to decrypt Document #{lastDocumentId}.
             </p>
             <div className="p-3 bg-gray-800/60 rounded-lg font-mono text-sm break-all">
               {lastKey}
             </div>
+            <div className="rounded-xl border border-gray-700/70 bg-gray-900/65 p-3 space-y-2">
+              <p className="text-sm font-medium">Recommended backup steps</p>
+              <p className="text-xs text-gray-400">1. Download backup file</p>
+              <p className="text-xs text-gray-400">2. Store in secure cloud/USB/password manager</p>
+              <p className="text-xs text-gray-400">3. Keep at least 2 copies</p>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-gray-300">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-red-600"
+                checked={keyBackupConfirmed}
+                onChange={(event) => setKeyBackupConfirmed(event.target.checked)}
+              />
+              <span>I have copied or downloaded this key backup.</span>
+            </label>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={() => setShowKeyModal(false)}>
+          <ModalFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              className={`${buttonClasses.ghostMd} w-full sm:w-auto`}
+              onPress={handleCloseKeyModal}
+              isDisabled={!keyBackupConfirmed}
+            >
               Close
             </Button>
             <Button
-              className="bg-gradient-to-r from-brand-700 to-brand-900"
+              className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
               onPress={() => {
                 if (lastKey) {
                   navigator.clipboard.writeText(lastKey);
@@ -703,6 +991,17 @@ const Documents = () => {
               }}
             >
               Copy Key
+            </Button>
+            <Button
+              className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
+              onPress={() => {
+                if (lastKey && lastDocumentId) {
+                  downloadKeyBackupFile(lastDocumentId, lastKey);
+                  toast.success("Key backup downloaded");
+                }
+              }}
+            >
+              Download Backup
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
-import { Card, CardBody, CardHeader, Button, Input } from "@heroui/react";
-import { FiUser, FiSliders, FiSave } from "react-icons/fi";
+import { Card, CardBody, CardHeader, Button, Input, Chip } from "@heroui/react";
+import { FiUser, FiSliders, FiSave, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
 import { useWeb3 } from "../context/Web3Context";
-import { shortenAddress } from "../utils/helpers";
+import { formatDate, shortenAddress } from "../utils/helpers";
 import { toast } from "react-hot-toast";
+import { buttonClasses } from "../utils/buttonClasses";
+import { contractService, GuardianInviteData } from "../services/contract.service";
 
 const Profile = () => {
-  const { account, isConnected } = useWeb3();
+  const { account, isConnected, connect, provider, signer, isFujiNetwork, switchToFuji } = useWeb3();
   const [nickname, setNickname] = useState("");
   const [theme, setTheme] = useState<"ember" | "midnight">("ember");
+  const [pendingInvites, setPendingInvites] = useState<GuardianInviteData[]>([]);
+  const [loadingInvites, setLoadingInvites] = useState(false);
+  const [acceptingVaultId, setAcceptingVaultId] = useState<number | null>(null);
+  const profileInputClassNames = {
+    inputWrapper: "bg-gray-900/75 border border-gray-700/80 shadow-none data-[hover=true]:border-gray-600",
+    input: "text-sm text-gray-100",
+  };
 
   useEffect(() => {
     try {
@@ -31,6 +40,34 @@ const Profile = () => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    if (isConnected && provider) {
+      contractService.initialize(provider, signer ?? undefined);
+      loadPendingInvites();
+    } else {
+      setPendingInvites([]);
+    }
+  }, [account, isConnected, provider, signer, isFujiNetwork]);
+
+  const loadPendingInvites = async () => {
+    if (!account || !isFujiNetwork) {
+      setPendingInvites([]);
+      return;
+    }
+
+    setLoadingInvites(true);
+    try {
+      const invites = await contractService.fetchPendingInvites(account);
+      const sorted = [...invites].sort((a, b) => a.expiresAt - b.expiresAt);
+      setPendingInvites(sorted);
+    } catch (error) {
+      console.error("Error loading pending invites:", error);
+      toast.error("Failed to load guardian invites");
+    } finally {
+      setLoadingInvites(false);
+    }
+  };
+
   const handleSave = () => {
     const trimmedNickname = nickname.trim();
     try {
@@ -46,6 +83,30 @@ const Profile = () => {
       toast.success("Profile updated");
     } catch {
       toast.error("Failed to save profile");
+    }
+  };
+
+  const handleAcceptInvite = async (vaultId: number) => {
+    if (!isConnected) {
+      toast.error("Please connect your wallet first");
+      await connect();
+      return;
+    }
+
+    if (!isFujiNetwork) {
+      toast.error("Please switch to Avalanche Fuji network");
+      return;
+    }
+
+    setAcceptingVaultId(vaultId);
+    try {
+      await contractService.acceptGuardianInvite(vaultId);
+      toast.success(`Guardian invite accepted for Vault #${vaultId}`);
+      await loadPendingInvites();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to accept guardian invite");
+    } finally {
+      setAcceptingVaultId(null);
     }
   };
 
@@ -70,15 +131,15 @@ const Profile = () => {
             </div>
           </CardHeader>
           <CardBody className="space-y-4">
-            <Input
-              label="Nickname"
-              placeholder="e.g. RedFox"
-              value={nickname}
-              onValueChange={setNickname}
-              classNames={{
-                input: "bg-gray-800/50 border-gray-700",
-              }}
-            />
+            <div className="space-y-1">
+              <p className="text-xs text-gray-300 font-medium">Nickname</p>
+              <Input
+                placeholder="e.g. RedFox"
+                value={nickname}
+                onValueChange={setNickname}
+                classNames={profileInputClassNames}
+              />
+            </div>
             <div className="text-sm text-gray-400">
               Wallet: {isConnected ? shortenAddress(account || "", 6) : "Not connected"}
             </div>
@@ -98,19 +159,13 @@ const Profile = () => {
           <CardBody className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <Button
-                variant={theme === "ember" ? "solid" : "flat"}
-                className={theme === "ember"
-                  ? "bg-gradient-to-r from-brand-700 to-brand-900 text-white"
-                  : "border border-gray-700 text-gray-300"}
+                className={theme === "ember" ? buttonClasses.primaryMd : buttonClasses.ghostMd}
                 onPress={() => setTheme("ember")}
               >
                 Ember
               </Button>
               <Button
-                variant={theme === "midnight" ? "solid" : "flat"}
-                className={theme === "midnight"
-                  ? "bg-gradient-to-r from-brand-800 to-brand-900 text-white"
-                  : "border border-gray-700 text-gray-300"}
+                className={theme === "midnight" ? buttonClasses.primaryMd : buttonClasses.ghostMd}
                 onPress={() => setTheme("midnight")}
               >
                 Midnight
@@ -123,9 +178,71 @@ const Profile = () => {
         </Card>
       </div>
 
+      <Card className="border border-gray-800 bg-gray-900/40 backdrop-blur-sm">
+        <CardHeader className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 flex items-center justify-center">
+              <FiUsers className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Guardian Invites</h2>
+              <p className="text-sm text-gray-400">Accept vault invitations assigned to this wallet</p>
+            </div>
+          </div>
+          <Chip size="sm" variant="flat" color="warning">
+            {pendingInvites.length} Pending
+          </Chip>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          {!isConnected ? (
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/55 p-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-400">Connect wallet to view pending guardian invites.</p>
+              <Button className={buttonClasses.primarySm} onPress={connect}>
+                Connect
+              </Button>
+            </div>
+          ) : !isFujiNetwork ? (
+            <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-yellow-200">Switch to Avalanche Fuji to load and accept invites.</p>
+              <Button className={buttonClasses.outlineSm} onPress={switchToFuji}>
+                Switch Network
+              </Button>
+            </div>
+          ) : loadingInvites ? (
+            <p className="text-sm text-gray-400">Loading pending invites...</p>
+          ) : pendingInvites.length === 0 ? (
+            <p className="text-sm text-gray-400">No pending guardian invites.</p>
+          ) : (
+            pendingInvites.map((invite) => (
+              <div
+                key={`${invite.vaultId}-${invite.expiresAt}`}
+                className="rounded-2xl border border-gray-800 bg-gray-900/55 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              >
+                <div className="space-y-1">
+                  <p className="font-medium">Vault #{invite.vaultId}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <FiClock />
+                    <span>Expires {formatDate(invite.expiresAt)}</span>
+                  </div>
+                </div>
+                <Button
+                  className={buttonClasses.primarySm}
+                  startContent={<FiCheckCircle />}
+                  onPress={() => handleAcceptInvite(invite.vaultId)}
+                  isLoading={acceptingVaultId === invite.vaultId}
+                  isDisabled={acceptingVaultId !== null}
+                >
+                  Accept Invite
+                </Button>
+              </div>
+            ))
+          )}
+        </CardBody>
+      </Card>
+
       <div className="flex justify-end">
         <Button
-          className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold"
+          className={buttonClasses.primaryMd}
           startContent={<FiSave />}
           onPress={handleSave}
         >

@@ -1,348 +1,510 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Navbar,
   NavbarContent,
-  NavbarMenuToggle,
-  NavbarMenu,
-  NavbarMenuItem,
 } from "@heroui/react";
 import {
-  FiZap,
+  FiArrowRight,
   FiShield,
   FiLock,
-  FiUsers,
-  FiArrowRight,
-  FiGlobe,
   FiMenu,
   FiX,
+  FiCheckCircle,
+  FiFileText,
+  FiKey,
+  FiClock,
 } from "react-icons/fi";
 import { Link } from "react-router-dom";
+import { getCurrentYear } from "../utils/helpers";
+import { buttonClasses } from "../utils/buttonClasses";
+
+const AvalancheLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+    <circle cx="32" cy="32" r="32" fill="#E84142" />
+    <path
+      fill="#FFFFFF"
+      d="M34.6 14.1c-1.2-2.1-4.2-2.1-5.4 0L15.6 37.8c-1.2 2.1.3 4.8 2.7 4.8h7.4c1.2 0 2.3-.7 2.9-1.8l10.2-17.7c.6-1.1.6-2.4 0-3.5l-4.2-5.5z"
+    />
+    <path
+      fill="#FFFFFF"
+      d="M43.5 29.2c-1.2-2.1-4.2-2.1-5.4 0l-3.7 6.4c-1.2 2.1.3 4.8 2.7 4.8h7.3c2.4 0 3.9-2.7 2.7-4.8l-3.6-6.4z"
+    />
+  </svg>
+);
 
 const LandingPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [activeNav, setActiveNav] = useState("#hero");
+
   const navItems = [
     { label: "Overview", href: "#hero" },
     { label: "Features", href: "#features" },
     { label: "Workflow", href: "#workflow" },
-    { label: "Get Started", href: "#cta" },
+    { label: "Security", href: "#security" },
   ];
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#040306] via-gray-950 to-[#040306] overflow-hidden">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 -left-1/4 w-96 h-96 bg-brand-700/5 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-brand-700/5 rounded-full blur-3xl animate-pulse delay-1000" />
-        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-brand-900/5 rounded-full blur-3xl animate-pulse delay-500" />
+  const workflowCards = [
+    {
+      step: "01",
+      title: "Store Sensitive Files",
+      text: "Upload wills, IDs, ownership records, and private files with client-side encryption.",
+    },
+    {
+      step: "02",
+      title: "Guardian Oversight",
+      text: "You can approve access while alive, or require guardian multi-signature for emergency/inheritance release.",
+    },
+    {
+      step: "03",
+      title: "Controlled Delivery",
+      text: "Authorized family members or trusted contacts access documents only under the policy you define.",
+    },
+  ];
 
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)]" />
+  const featureCards = [
+    {
+      icon: <FiShield className="text-xl" />,
+      title: "Access Guardians",
+      description: "Assign trusted guardians and executors for each access vault.",
+      points: ["Flexible approval thresholds", "On-chain audit events", "Emergency fallback coverage"],
+    },
+    {
+      icon: <FiLock className="text-xl" />,
+      title: "Encrypted Vault Storage",
+      description: "Sensitive family records are encrypted in-browser before upload.",
+      points: ["Client-side AES encryption", "No plaintext exposure", "IPFS-backed retrieval"],
+    },
+    {
+      icon: <FiKey className="text-xl" />,
+      title: "Access Passes",
+      description: "ERC-721 passes define who can request or receive protected documents.",
+      points: ["Mint to family or delegates", "Burn to revoke", "Wallet-native ownership"],
+    },
+  ];
+
+  const securityItems = [
+    {
+      icon: <FiCheckCircle className="text-brand-400" />,
+      title: "No Plaintext Leakage",
+      description: "Only encrypted metadata and content references are placed on-chain.",
+    },
+    {
+      icon: <FiCheckCircle className="text-brand-400" />,
+      title: "Theft-Resistant Control",
+      description: "No single actor can unilaterally release protected documents.",
+    },
+    {
+      icon: <FiCheckCircle className="text-brand-400" />,
+      title: "Verifiable Release Trail",
+      description: "Approval actions are recorded for legal and family-level accountability.",
+    },
+  ];
+
+  const navButtonClass = `button-curve group ${buttonClasses.primarySm}`;
+  const solidButtonClass = `button-curve group ${buttonClasses.primaryMd}`;
+  const outlineButtonClass = `button-curve group ${buttonClasses.outlineMd}`;
+  const neutralButtonClass = `button-curve group ${buttonClasses.neutralMd}`;
+
+  const headerTabClass =
+    "h-9 px-4 rounded-full text-[13px] sm:text-[14px] font-semibold transition-all duration-300 inline-flex items-center";
+
+  useEffect(() => {
+    const sectionIds = ["hero", "features", "workflow", "security"];
+    const sections = sectionIds
+      .map((id) => document.getElementById(id))
+      .filter((section): section is HTMLElement => section !== null);
+
+    const setFromHash = () => {
+      if (window.location.hash) {
+        setActiveNav(window.location.hash);
+      }
+    };
+
+    setFromHash();
+
+    if (sections.length === 0) {
+      window.addEventListener("hashchange", setFromHash);
+      return () => window.removeEventListener("hashchange", setFromHash);
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (visible?.target?.id) {
+          setActiveNav(`#${visible.target.id}`);
+        }
+      },
+      {
+        threshold: [0.2, 0.35, 0.5, 0.7],
+        rootMargin: "-28% 0px -46% 0px",
+      }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    window.addEventListener("hashchange", setFromHash);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("hashchange", setFromHash);
+    };
+  }, []);
+
+  return (
+    <div className="landing-page min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
+      <div className="absolute inset-0 -z-10 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-brand-700/15 blur-3xl" />
+        <div className="absolute top-64 -left-20 h-64 w-64 rounded-full bg-brand-900/20 blur-3xl" />
+        <div className="absolute bottom-10 -right-16 h-72 w-72 rounded-full bg-brand-700/10 blur-3xl" />
       </div>
 
-      <Navbar
-        isMenuOpen={isMenuOpen}
-        onMenuOpenChange={setIsMenuOpen}
-        className="relative z-10 border-b border-gray-800/50 bg-gray-950/70 backdrop-blur-xl"
-        maxWidth="xl"
-        height="4.5rem"
-      >
-        <NavbarContent className="md:hidden" justify="start">
-          <NavbarMenuToggle
-            aria-label="Toggle navigation menu"
-            icon={isMenuOpen ? <FiX size={22} /> : <FiMenu size={22} />}
-            className="text-gray-300"
-          />
-        </NavbarContent>
+      {isMenuOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] md:hidden"
+          onClick={() => setIsMenuOpen(false)}
+        />
+      )}
 
-        <NavbarContent justify="start" className="gap-3">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-brand-700 to-brand-900 rounded-xl flex items-center justify-center animate-pulse-glow">
-              <FiLock className="text-white text-xl" />
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-brand-700 to-brand-900 bg-clip-text text-transparent">
-                SpooVault
-              </h1>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-                <p className="text-xs text-gray-400">Avalanche Fuji</p>
+      <div className="md:hidden fixed left-1/2 -translate-x-1/2 top-4 z-50 w-[calc(100vw-1.5rem)] max-w-[30rem]">
+        <div className="relative">
+          <div className="w-full h-[4.5rem] rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)] px-4 flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden" onClick={() => setIsMenuOpen(false)}>
+              <div className="w-9 h-9 rounded-xl bg-white/5 border border-gray-700/60 flex items-center justify-center shadow-lg shadow-brand-900/20 flex-shrink-0">
+                <AvalancheLogo className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-[15px] font-bold leading-none truncate">SpooVault</h1>
+              </div>
+            </Link>
+            <button
+              type="button"
+              aria-label="Toggle navigation menu"
+              className="w-10 h-10 rounded-xl border border-gray-700/70 bg-gray-900/75 text-gray-200 flex items-center justify-center flex-shrink-0"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+            >
+              {isMenuOpen ? <FiX size={22} /> : <FiMenu size={22} />}
+            </button>
+          </div>
+
+          <div
+            className={`overflow-hidden transition-all duration-300 ${
+              isMenuOpen ? "max-h-[420px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
+            }`}
+          >
+            <div className="w-full rounded-2xl border border-gray-800/80 bg-gray-950/95 backdrop-blur-2xl p-2 shadow-[0_22px_32px_-24px_rgba(0,0,0,0.95)]">
+              <nav className="space-y-1">
+                {navItems.map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => {
+                      setActiveNav(item.href);
+                      setIsMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-sm font-medium transition-colors ${
+                      activeNav === item.href
+                        ? "border border-gray-700/80 bg-gray-800/80 text-white"
+                        : "border border-transparent text-gray-300 hover:bg-gray-800/60 hover:text-white"
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+              </nav>
+              <div className="pt-2">
+                <Link to="/dashboard" className="block w-full" onClick={() => setIsMenuOpen(false)}>
+                  <Button
+                    className={`w-full ${navButtonClass}`}
+                    endContent={<FiArrowRight className="text-[18px] transition-transform duration-300 group-hover:translate-x-1" />}
+                  >
+                    Launch App
+                  </Button>
+                </Link>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden md:block fixed inset-x-0 top-5 z-50 px-6 lg:px-8">
+        <div className="w-full max-w-7xl mx-auto">
+        <Navbar
+          className="rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)]"
+          maxWidth="full"
+          height="4.5rem"
+        >
+        <NavbarContent justify="start" className="gap-3">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/5 border border-gray-700/60 flex items-center justify-center shadow-lg shadow-brand-900/20">
+              <AvalancheLogo className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold">SpooVault</h1>
+              <p className="text-[11px] text-gray-400">Avalanche Access Security</p>
+            </div>
           </Link>
         </NavbarContent>
 
-        <NavbarContent justify="center" className="hidden md:flex gap-6">
-          {navItems.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="text-sm text-gray-300 hover:text-white transition-colors"
-            >
-              {item.label}
-            </a>
-          ))}
-        </NavbarContent>
-
-        <NavbarContent justify="end" className="gap-2">
-          <Link to="/dashboard" className="hidden sm:flex">
-            <Button variant="flat" className="border border-gray-700 text-gray-200">
-              Launch App
-            </Button>
-          </Link>
-          <Link to="/dashboard">
-            <Button
-              className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover:shadow-xl hover:shadow-brand-800/20 transition-all"
-              endContent={<FiArrowRight />}
-            >
-              Get Started
-            </Button>
-          </Link>
-        </NavbarContent>
-
-        <NavbarMenu className="bg-gray-950/95 backdrop-blur-2xl pt-6">
-          {navItems.map((item) => (
-            <NavbarMenuItem key={item.href}>
+        <NavbarContent justify="center" className="hidden lg:flex">
+          <div className="flex items-center gap-1.5 rounded-full border border-gray-700/70 bg-gray-900/55 p-1.5 backdrop-blur-xl">
+            {navItems.map((item) => (
               <a
+                key={item.href}
                 href={item.href}
-                className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-gray-300 hover:text-white hover:bg-gray-800/60 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
+                onClick={() => setActiveNav(item.href)}
+                className={`${headerTabClass} ${
+                  activeNav === item.href
+                    ? "bg-gray-800/90 border border-gray-600/65 text-gray-100 font-bold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]"
+                    : "border border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/65"
+                }`}
               >
                 {item.label}
               </a>
-            </NavbarMenuItem>
-          ))}
-          <NavbarMenuItem>
-            <Link to="/dashboard" className="block w-full">
-              <Button className="w-full bg-gradient-to-r from-brand-700 to-brand-900">
+            ))}
+          </div>
+        </NavbarContent>
+
+        <NavbarContent justify="end" className="gap-3">
+          <span className="golden-button-orbit inline-flex">
+            <Link to="/dashboard">
+              <Button
+                className={navButtonClass}
+                endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
+              >
                 Launch App
               </Button>
             </Link>
-          </NavbarMenuItem>
-        </NavbarMenu>
-      </Navbar>
+          </span>
+        </NavbarContent>
+        </Navbar>
+        </div>
+      </div>
+      <div className="h-[96px] sm:h-[108px]" aria-hidden="true" />
 
-      <section id="hero" className="relative z-10 pt-16 sm:pt-24 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-brand-700/10 to-brand-900/10 border border-brand-700/20 mb-8 animate-float">
-            <span className="w-2 h-2 bg-gradient-to-r from-brand-700 to-brand-900 rounded-full animate-pulse" />
-            <span className="text-sm font-medium bg-gradient-to-r from-brand-500 to-brand-600 bg-clip-text text-transparent">
-              ENTERPRISE GRADE - MULTI-SIG SECURITY
-            </span>
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight">
-            <span className="block text-gray-300">Document Vaults</span>
-            <span className="block bg-gradient-to-r from-brand-700 via-brand-800 to-brand-800 bg-clip-text text-transparent bg-size-200 animate-gradient">
-              Powered by Avalanche
-            </span>
-          </h1>
-
-          <p className="text-lg sm:text-xl text-gray-400 max-w-3xl mx-auto mb-10 leading-relaxed">
-            Secure sensitive documents with client-side encryption, multi-signature approvals,
-            and NFT-based access control running on Avalanche.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-            <Link to="/dashboard" className="flex-1 sm:flex-none">
-              <Button
-                size="lg"
-                className="w-full sm:w-auto bg-gradient-to-r from-brand-700 to-brand-900 text-white font-bold py-6 px-10 text-lg hover:shadow-2xl hover:shadow-brand-800/30 transform hover:-translate-y-0.5 transition-all duration-300 group"
-                endContent={<FiZap className="group-hover:rotate-12 transition-transform" />}
-              >
-                <span className="bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">
-                  Connect Wallet & Start
-                </span>
-              </Button>
-            </Link>
-            <Link to="#features" className="flex-1 sm:flex-none">
-              <Button
-                size="lg"
-                variant="flat"
-                className="w-full sm:w-auto border-2 border-gray-700 bg-gray-900/50 font-bold py-6 px-10 text-lg hover:border-brand-700/50 transition-colors"
-              >
-                Explore Features
-              </Button>
-            </Link>
+      <section id="hero" className="relative px-4 sm:px-6 lg:px-8 pt-10 sm:pt-16 pb-14 sm:pb-20">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden -z-10">
+          <div className="hidden sm:block golden-orbit absolute right-[-72px] top-10 w-52 h-52 sm:right-[-44px] sm:top-6 sm:w-72 sm:h-72 opacity-75">
+            <div className="w-full h-full rounded-full bg-gradient-to-br from-amber-100/10 via-brand-500/12 to-transparent" />
           </div>
         </div>
-      </section>
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-start">
+          <div>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
+              Protect Family Documents
+              <span className="block text-brand-400">While You Live and Beyond</span>
+            </h1>
 
-      <section id="features" className="relative z-10 py-16 sm:py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent to-gray-900/20">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-              Why <span className="bg-gradient-to-r from-brand-700 to-brand-900 bg-clip-text text-transparent">SpooVault</span>?
-            </h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              Enterprise-grade document security powered by Avalanche's high-performance blockchain
+            <p className="mt-4 text-xs sm:text-sm text-gray-400 tracking-wide">
+              Avalanche Fuji • AES-256 • Multi-Sig
             </p>
-          </div>
 
-          <div className="grid md:grid-cols-3 gap-6 sm:gap-8">
-            {[
-              {
-                icon: <FiShield className="text-2xl sm:text-3xl" />,
-                title: "Multi-Signature Security",
-                description: "Require multiple approvals for document access with customizable thresholds.",
-                features: ["2-of-3 to 5-of-7 setups", "Role-based permissions", "Time-locked approvals"],
-                gradient: "from-brand-700 to-brand-900",
-              },
-              {
-                icon: <FiLock className="text-2xl sm:text-3xl" />,
-                title: "Client-Side Encryption",
-                description: "AES-256 encryption before upload. Your keys, your data.",
-                features: ["End-to-end encryption", "Zero-knowledge storage", "Key splitting"],
-                gradient: "from-brand-700 to-brand-900",
-              },
-              {
-                icon: <FiUsers className="text-2xl sm:text-3xl" />,
-                title: "NFT Access Control",
-                description: "ERC-721 tokens manage document access. Mint, transfer, or burn tokens.",
-                features: ["Token-gated access", "Transferable permissions", "Instant revoke"],
-                gradient: "from-brand-700 to-brand-900",
-              },
-            ].map((feature, idx) => (
-              <div
-                key={idx}
-                className="group p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-gray-900/30 to-gray-900/10 border border-gray-800 backdrop-blur-sm hover:border-brand-700/50 transition-all duration-500 hover:scale-[1.02]"
-              >
-                <div
-                  className={`inline-flex p-4 rounded-2xl bg-gradient-to-br ${feature.gradient} mb-6 group-hover:scale-110 transition-transform duration-300`}
-                >
-                  {feature.icon}
-                </div>
-                <h3 className="text-xl sm:text-2xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-gray-400 mb-6">{feature.description}</p>
-                <ul className="space-y-2">
-                  {feature.features.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-gray-400">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-700" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="workflow" className="relative z-10 py-16 sm:py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-              How It Works
-            </h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-              Encrypt locally, store on IPFS, and unlock with multi-signature approvals.
+            <p className="mt-4 text-base sm:text-lg text-gray-400 max-w-2xl leading-relaxed">
+              SpooVault secures critical documents for everyday control while you&apos;re alive, with
+              guardian-governed emergency and inheritance release when needed.
             </p>
-          </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                step: "01",
-                title: "Encrypt & Upload",
-                description: "Files are encrypted client-side before being pinned to IPFS.",
-              },
-              {
-                step: "02",
-                title: "Request Access",
-                description: "Access requires NFT ownership and guardian approvals.",
-              },
-              {
-                step: "03",
-                title: "Decrypt Securely",
-                description: "Keys stay with guardians and decrypt locally on approval.",
-              },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="p-6 rounded-3xl border border-gray-800 bg-gray-900/30 backdrop-blur-sm"
-              >
-                <div className="text-xs text-brand-500 font-semibold mb-3">
-                  STEP {item.step}
-                </div>
-                <h3 className="text-xl font-bold mb-2">{item.title}</h3>
-                <p className="text-gray-400">{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="cta" className="relative z-10 py-16 sm:py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gray-900/50 to-[#040306] border border-gray-800 p-8 sm:p-12">
-            <div className="absolute -right-20 -top-20 w-64 h-64 bg-brand-700/10 rounded-full blur-3xl" />
-            <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-brand-700/10 rounded-full blur-3xl" />
-
-            <div className="relative z-10 text-center">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4">
-                Ready to Secure Your Documents?
-              </h2>
-              <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-                Deploy multi-sig vaults, encrypt files client-side, and manage access on Avalanche.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link to="/dashboard" className="flex-1 sm:flex-none">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
+              <span className="golden-button-orbit inline-flex w-full max-w-full sm:w-auto">
+                <Link to="/dashboard" className="block w-full sm:w-auto">
                   <Button
-                    size="lg"
-                    className="w-full sm:w-auto bg-gradient-to-r from-brand-700 to-brand-900 font-bold py-6 px-10 text-lg hover:shadow-2xl hover:shadow-brand-800/30 transition-all group"
-                    endContent={<FiArrowRight className="group-hover:translate-x-1 transition-transform" />}
+                    className={`w-full sm:w-auto ${solidButtonClass}`}
+                    endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
                   >
-                    Launch App Now
+                    Start Secure Vault
                   </Button>
                 </Link>
+              </span>
+              <a href="#workflow" className="w-full sm:w-auto">
                 <Button
-                  size="lg"
-                  variant="flat"
-                  className="flex-1 sm:flex-none border-2 border-gray-700 bg-transparent font-bold py-6 px-10 text-lg hover:border-brand-700 transition-colors"
-                  startContent={<FiGlobe />}
+                  className={`w-full sm:w-auto ${outlineButtonClass}`}
+                  endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
                 >
-                  Read Documentation
+                  View Access Flow
                 </Button>
+              </a>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4">
+                <p className="text-xl font-semibold">AES-256</p>
+                <p className="text-xs text-gray-400 mt-1">Client-side encryption</p>
               </div>
+              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4">
+                <p className="text-xl font-semibold">Multi-Sig</p>
+                <p className="text-xs text-gray-400 mt-1">Guardian approvals</p>
+              </div>
+              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4 col-span-2 sm:col-span-1">
+                <p className="text-xl font-semibold">ERC-721</p>
+                <p className="text-xs text-gray-400 mt-1">Beneficiary access passes</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-gray-800 bg-gradient-to-b from-gray-900/70 to-gray-950/90 p-5 sm:p-6 shadow-2xl shadow-black/30">
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
+                <FiClock className="text-brand-400" />
+                <span>Owner + Guardian Control</span>
+              </div>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-semibold leading-tight">How Access Release Works</h2>
+            <p className="text-sm text-gray-400 mt-2 mb-5">Designed for everyday sharing, emergencies, and inheritance planning.</p>
+
+            <div className="space-y-3 sm:space-y-4">
+              {workflowCards.map((card) => (
+                <div
+                  key={card.step}
+                  className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5 transition-colors hover:border-brand-700/40"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-brand-700/20 border border-brand-700/40 text-brand-300 text-xs font-semibold flex items-center justify-center mb-3">
+                    {card.step}
+                  </div>
+                  <h3 className="text-lg font-semibold mb-1">{card.title}</h3>
+                  <p className="text-sm text-gray-400">{card.text}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <footer className="relative z-10 border-t border-gray-800/50 py-8 px-4 sm:px-6 lg:px-8">
+      <section id="features" className="px-4 sm:px-6 lg:px-8 py-12 sm:py-16 border-y border-gray-800/50 bg-gray-950/25">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-brand-700 to-brand-900 rounded-xl flex items-center justify-center">
-                <FiLock className="text-white" />
+          <div className="max-w-3xl">
+            <p className="text-sm text-brand-400 font-medium tracking-wide">CORE CAPABILITIES</p>
+            <h2 className="text-3xl sm:text-4xl font-bold mt-2">Infrastructure for Living and Inheritance Access</h2>
+            <p className="text-gray-400 mt-4">
+              Built to protect sensitive files, enforce approval policies, and provide a verifiable release history.
+            </p>
+          </div>
+
+          <div className="mt-8 grid md:grid-cols-3 gap-5 sm:gap-6">
+            {featureCards.map((feature) => (
+              <div key={feature.title} className="rounded-3xl border border-gray-800 bg-gray-900/40 p-6">
+                <div className="w-11 h-11 rounded-xl bg-brand-700/20 border border-brand-700/30 flex items-center justify-center text-brand-300 mb-4">
+                  {feature.icon}
+                </div>
+                <h3 className="text-xl font-semibold">{feature.title}</h3>
+                <p className="text-sm text-gray-400 mt-2">{feature.description}</p>
+                <div className="mt-4 space-y-2">
+                  {feature.points.map((point) => (
+                    <div key={point} className="flex items-center gap-2 text-sm text-gray-300">
+                      <FiCheckCircle className="text-brand-500" />
+                      <span>{point}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="workflow" className="px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-6 sm:gap-8 items-start">
+          <div className="rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8">
+            <p className="text-sm text-brand-400 font-medium">WORKFLOW</p>
+            <h2 className="text-3xl font-bold mt-2">Built for Real Family Continuity</h2>
+            <p className="text-gray-400 mt-3">
+              Control access today, set emergency rules, and ensure the right people can retrieve files later.
+            </p>
+
+            <div className="mt-6 space-y-4">
+              {[
+                "Create an access vault and assign trusted guardians/executors",
+                "Encrypt and upload sensitive family documents",
+                "Issue access passes for family or delegates",
+                "Approve release requests with threshold consensus when policy conditions are met",
+              ].map((item, idx) => (
+                <div key={item} className="flex items-start gap-3">
+                  <div className="w-7 h-7 mt-0.5 rounded-lg bg-brand-700/20 border border-brand-700/40 text-brand-300 text-xs font-semibold flex items-center justify-center">
+                    {idx + 1}
+                  </div>
+                  <p className="text-sm sm:text-base text-gray-300">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div id="security" className="rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-brand-700/20 border border-brand-700/30 flex items-center justify-center text-brand-300">
+                <FiFileText className="text-xl" />
               </div>
               <div>
-                <span className="text-lg font-bold">SpooVault</span>
-                <p className="text-xs text-gray-400">Document Security on Avalanche</p>
+                <p className="text-sm text-brand-400 font-medium">SECURITY MODEL</p>
+                <h3 className="text-2xl font-semibold">Protection by Design</h3>
               </div>
             </div>
-            <div className="text-gray-400 text-sm text-center md:text-right">
-              <p>Built on Avalanche ? ? {new Date().getFullYear()} All rights reserved</p>
-              <p className="text-xs mt-1">Enterprise-grade multi-signature document vaults</p>
+            <div className="space-y-4">
+              {securityItems.map((item) => (
+                <div key={item.title} className="rounded-2xl border border-gray-800 bg-gray-900/55 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">{item.icon}</div>
+                    <div>
+                      <p className="font-medium">{item.title}</p>
+                      <p className="text-sm text-gray-400 mt-1">{item.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </footer>
+      </section>
 
-      <style>{`
-        @keyframes gradient {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        .animate-gradient {
-          background-size: 200% 200%;
-          animation: gradient 3s ease infinite;
-        }
-        .bg-size-200 {
-          background-size: 200% auto;
-        }
-      `}</style>
+      <section className="px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20">
+        <div className="max-w-5xl mx-auto rounded-3xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-900/45 p-8 sm:p-10 text-center">
+          <p className="text-sm text-brand-400 font-medium">READY FOR REAL-WORLD USE</p>
+          <h2 className="text-3xl sm:text-4xl font-bold mt-2">Deploy a Theft-Resistant Access Platform</h2>
+          <p className="text-gray-400 mt-3 max-w-2xl mx-auto">
+            Start with access vault creation, encrypted storage, and policy-based release for both living and inheritance scenarios.
+          </p>
+          <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
+            <span className="golden-button-orbit inline-flex w-full max-w-full sm:w-auto">
+              <Link to="/dashboard" className="block w-full sm:w-auto">
+                <Button
+                  className={`w-full sm:w-auto ${solidButtonClass}`}
+                  endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
+                >
+                  Open Access Dashboard
+                </Button>
+              </Link>
+            </span>
+            <a href="#features" className="w-full sm:w-auto">
+              <Button
+                className={`w-full sm:w-auto ${neutralButtonClass}`}
+                endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
+              >
+                Explore Capabilities
+              </Button>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-gray-800/60 px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/5 border border-gray-700/60 flex items-center justify-center">
+              <AvalancheLogo className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">SpooVault</p>
+              <p className="text-[11px] text-gray-500">Secure access vault on Avalanche</p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">{getCurrentYear()} SpooVault. Secure by default.</p>
+        </div>
+      </footer>
     </div>
   );
 };
 
 export default LandingPage;
-

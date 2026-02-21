@@ -46,16 +46,31 @@ const uploadFile = async (
     formData.append("pinataMetadata", JSON.stringify({ name, keyvalues }));
   }
 
-  const response = await axios.post(
-    `${PINATA_API_URL}/pinning/pinFileToIPFS`,
-    formData,
-    { headers: buildAuthHeaders() }
-  );
+  try {
+    const response = await axios.post(
+      `${PINATA_API_URL}/pinning/pinFileToIPFS`,
+      formData,
+      {
+        headers: buildAuthHeaders(),
+        timeout: 90000,
+        maxBodyLength: Infinity,
+      }
+    );
 
-  return {
-    hash: response.data.IpfsHash,
-    size: response.data.PinSize,
-  };
+    return {
+      hash: response.data.IpfsHash,
+      size: response.data.PinSize,
+    };
+  } catch (error: any) {
+    const isTimeout = error?.code === "ECONNABORTED";
+    const message = isTimeout
+      ? "IPFS upload timed out. Try again with a smaller file or better network."
+      : error?.response?.data?.error?.reason ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "IPFS upload failed";
+    throw new Error(message);
+  }
 };
 
 export const ipfsService = {

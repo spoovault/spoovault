@@ -11,14 +11,11 @@ import {
   ModalFooter,
   useDisclosure,
   Input,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
 } from "@heroui/react";
 import {
   FiKey,
   FiPlus,
+  FiChevronDown,
   FiEye,
   FiTrash,
   FiShield,
@@ -31,6 +28,7 @@ import {
 } from "../services/contract.service";
 import { toast } from "react-hot-toast";
 import { formatDate, isValidAddress, shortenAddress } from "../utils/helpers";
+import { buttonClasses } from "../utils/buttonClasses";
 
 const NFTGallery = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -48,6 +46,12 @@ const NFTGallery = () => {
     recipient: "",
     tokenURI: "",
   });
+  const modalInputClassNames = {
+    inputWrapper: "bg-gray-900/75 border border-gray-700/80 shadow-none data-[hover=true]:border-gray-600",
+    input: "text-sm text-gray-100",
+  };
+  const modalSelectClassName =
+    "h-11 w-full rounded-full border border-gray-700/80 bg-gray-900/75 px-4 pr-10 text-sm text-gray-100 outline-none transition-colors hover:border-gray-600 focus:border-brand-700/70";
 
   useEffect(() => {
     if (isConnected && provider && signer && isFujiNetwork) {
@@ -166,11 +170,11 @@ const NFTGallery = () => {
           </div>
           <h1 className="text-3xl font-bold mb-4">Connect Your Wallet</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-            Connect your wallet to view and manage access tokens.
+            Connect your wallet to view and manage vault access passes.
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover:shadow-xl hover:shadow-brand-800/20"
+            className={buttonClasses.primaryLg}
             onPress={connect}
             startContent={<FiKey />}
           >
@@ -190,11 +194,11 @@ const NFTGallery = () => {
           </div>
           <h1 className="text-3xl font-bold mb-4">Wrong Network</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-            Please switch to Avalanche Fuji Testnet to manage NFTs.
+            Please switch to Avalanche Fuji Testnet to manage access passes.
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-yellow-500 to-orange-500 font-semibold"
+            className={buttonClasses.warningLg}
             onPress={() => window.ethereum && window.ethereum.request({
               method: "wallet_switchEthereumChain",
               params: [{ chainId: "0xA869" }]
@@ -211,17 +215,17 @@ const NFTGallery = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">NFT Gallery</h1>
+          <h1 className="text-3xl font-bold mb-2">Access Passes</h1>
           <p className="text-gray-400">
-            Manage ERC-721 access tokens for vault permissions
+            Manage ERC-721 passes for vault permissions and controlled release
           </p>
         </div>
         <Button
-          className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover-glow"
+          className={buttonClasses.primaryMd}
           startContent={<FiPlus />}
           onPress={onOpen}
         >
-          Mint Token
+          Mint Pass
         </Button>
       </div>
 
@@ -230,7 +234,7 @@ const NFTGallery = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Owned Tokens</p>
+                <p className="text-gray-400 text-sm">Issued Passes</p>
                 <p className="text-2xl font-bold">{tokens.length}</p>
               </div>
               <div className="p-3 rounded-lg bg-purple-500/20">
@@ -243,7 +247,7 @@ const NFTGallery = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Total Supply</p>
+                <p className="text-gray-400 text-sm">Pass Supply</p>
                 <p className="text-2xl font-bold">{totalSupply}</p>
               </div>
               <div className="p-3 rounded-lg bg-green-500/20">
@@ -256,7 +260,7 @@ const NFTGallery = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Vaults Covered</p>
+                <p className="text-gray-400 text-sm">Access Vaults</p>
                 <p className="text-2xl font-bold">{ownedVaultCount}</p>
               </div>
               <div className="p-3 rounded-lg bg-brand-700/20">
@@ -269,22 +273,22 @@ const NFTGallery = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-          <div className="text-gray-400">Loading tokens...</div>
+          <div className="text-gray-400">Loading passes...</div>
         ) : tokens.length === 0 ? (
           <div className="text-center py-12 col-span-full">
             <div className="w-20 h-20 bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
               <FiKey className="text-gray-600 text-3xl" />
             </div>
-            <h3 className="text-xl font-bold mb-2">No tokens found</h3>
+            <h3 className="text-xl font-bold mb-2">No passes found</h3>
             <p className="text-gray-400 mb-6">
-              Mint your first access token to manage vault permissions.
+              Mint your first access pass to define who can request or receive protected files.
             </p>
             <Button
-              className="bg-gradient-to-r from-brand-700 to-brand-900"
+              className={buttonClasses.primaryMd}
               onPress={onOpen}
               startContent={<FiPlus />}
             >
-              Mint Token
+              Mint Pass
             </Button>
           </div>
         ) : (
@@ -306,7 +310,7 @@ const NFTGallery = () => {
                 </div>
 
                 <div className="p-6">
-                  <h3 className="font-bold text-lg mb-3">Access Token #{token.tokenId}</h3>
+                  <h3 className="font-bold text-lg mb-3">Access Pass #{token.tokenId}</h3>
 
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
@@ -364,65 +368,82 @@ const NFTGallery = () => {
         isOpen={isOpen}
         onClose={onClose}
         size="lg"
-        className="bg-gray-900"
+        backdrop="blur"
+        classNames={{
+          wrapper: "z-[120]",
+          backdrop: "bg-black/70",
+        }}
         scrollBehavior="inside"
         placement="center"
       >
-        <ModalContent className="bg-gray-900 w-[92vw] max-w-xl max-h-[80vh] overflow-hidden">
-          <ModalHeader>Mint Access Token</ModalHeader>
-          <ModalBody className="max-h-[70vh] overflow-y-auto">
+        <ModalContent className="bg-gray-950 w-[94vw] max-w-xl max-h-[82vh] overflow-hidden border border-gray-800/90 shadow-2xl">
+          <ModalHeader className="border-b border-gray-800/80 px-4 sm:px-6 py-4">Mint Access Pass</ModalHeader>
+          <ModalBody className="modal-scroll max-h-[70vh] overflow-y-auto px-4 sm:px-6 py-4">
             <div className="space-y-4">
-              <Input
-                label="Vault ID"
-                placeholder="Enter vault ID"
-                value={form.vaultId}
-                onValueChange={(value) => setForm({ ...form, vaultId: value })}
-              />
-              <Input
-                label="Recipient Address"
-                placeholder="0x..."
-                value={form.recipient}
-                onValueChange={(value) => setForm({ ...form, recipient: value })}
-              />
-              <Input
-                label="Token URI (optional)"
-                placeholder="https://..."
-                value={form.tokenURI}
-                onValueChange={(value) => setForm({ ...form, tokenURI: value })}
-              />
+              <div className="space-y-1">
+                <p className="text-xs text-gray-300 font-medium">Vault ID</p>
+                <Input
+                  placeholder="Enter vault ID"
+                  value={form.vaultId}
+                  onValueChange={(value) => setForm({ ...form, vaultId: value })}
+                  classNames={modalInputClassNames}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-300 font-medium">Recipient Address</p>
+                <Input
+                  placeholder="0x..."
+                  value={form.recipient}
+                  onValueChange={(value) => setForm({ ...form, recipient: value })}
+                  classNames={modalInputClassNames}
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-300 font-medium">Token URI (optional)</p>
+                <Input
+                  placeholder="https://..."
+                  value={form.tokenURI}
+                  onValueChange={(value) => setForm({ ...form, tokenURI: value })}
+                  classNames={modalInputClassNames}
+                />
+              </div>
 
-              <Dropdown>
-                <DropdownTrigger>
-                  <Button variant="flat" className="w-full justify-between">
-                    {form.vaultId
-                      ? vaultNameById[Number(form.vaultId)] || `Vault #${form.vaultId}`
-                      : "Select Vault"}
-                  </Button>
-                </DropdownTrigger>
-                <DropdownMenu onAction={(key) => setForm({ ...form, vaultId: String(key) })}>
-                  {vaults.map((vault) => (
-                    <DropdownItem key={vault.id}>{vault.name || `Vault #${vault.id}`}</DropdownItem>
-                  ))}
-                </DropdownMenu>
-              </Dropdown>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-300 font-medium">Select Vault</p>
+                <div className="relative">
+                  <select
+                    value={form.vaultId}
+                    onChange={(event) => setForm({ ...form, vaultId: event.target.value })}
+                    className={modalSelectClassName}
+                  >
+                    <option value="">Select Vault</option>
+                    {vaults.map((vault) => (
+                      <option key={vault.id} value={vault.id}>
+                        {vault.name || `Vault #${vault.id}`}
+                      </option>
+                    ))}
+                  </select>
+                  <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                </div>
+              </div>
 
               <div className="p-4 bg-brand-700/10 border border-brand-700/20 rounded-lg">
                 <p className="text-sm">
-                  <span className="font-medium">Note:</span> Only vault guardians can mint access tokens.
+                  <span className="font-medium">Note:</span> Only vault guardians can mint access passes.
                 </p>
               </div>
             </div>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="light" onPress={onClose} isDisabled={minting}>
+          <ModalFooter className="border-t border-gray-800/80 px-4 sm:px-6 py-3 flex-col-reverse sm:flex-row gap-2">
+            <Button className={`${buttonClasses.ghostMd} w-full sm:w-auto`} onPress={onClose} isDisabled={minting}>
               Cancel
             </Button>
             <Button
-              className="bg-gradient-to-r from-brand-700 to-brand-900"
+              className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
               onPress={handleMint}
               isLoading={minting}
             >
-              Mint Token
+              Mint Pass
             </Button>
           </ModalFooter>
         </ModalContent>

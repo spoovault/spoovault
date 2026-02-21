@@ -2,23 +2,37 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
  * @title SpooVault
- * @dev Decentralized NFT-powered multi-signature encrypted document vault
+ * @dev NFT-powered multi-signature encrypted document vault
  */
-contract SpooVault is ERC721, Ownable {
-    using Counters for Counters.Counter;
-    
-    Counters.Counter private _tokenIdCounter;
-    Counters.Counter private _vaultIdCounter;
-    Counters.Counter private _documentIdCounter;
-    
-    enum RequestStatus { PENDING, APPROVED, REJECTED, EXPIRED }
-    enum AccessLevel { READ, READ_WRITE, ADMIN }
-    
+contract SpooVault is ERC721 {
+    uint256 private _tokenIdCounter;
+    uint256 private _vaultIdCounter;
+    uint256 private _documentIdCounter;
+    uint256 private _requestIdCounter;
+
+    enum RequestStatus {
+        PENDING,
+        APPROVED,
+        REJECTED,
+        EXPIRED
+    }
+
+    enum AccessLevel {
+        READ,
+        READ_WRITE,
+        ADMIN
+    }
+
+    enum ReleaseCondition {
+        ANYTIME,
+        LIVE_ONLY,
+        EMERGENCY_ONLY,
+        POST_DEATH_ONLY
+    }
+
     struct Vault {
         uint256 id;
         address creator;
@@ -29,7 +43,7 @@ contract SpooVault is ERC721, Ownable {
         bool isActive;
         uint256 createdAt;
     }
-    
+
     struct Document {
         uint256 id;
         uint256 vaultId;
@@ -39,7 +53,7 @@ contract SpooVault is ERC721, Ownable {
         uint256 uploadedAt;
         AccessLevel requiredAccess;
     }
-    
+
     struct AccessRequest {
         uint256 requestId;
         uint256 documentId;
@@ -49,7 +63,7 @@ contract SpooVault is ERC721, Ownable {
         uint256 expiresAt;
         uint256 createdAt;
     }
-    
+
     struct GuardianInvite {
         address guardian;
         uint256 vaultId;
@@ -57,7 +71,12 @@ contract SpooVault is ERC721, Ownable {
         uint256 expiresAt;
     }
 
-    // Custom errors (cheaper than revert strings)
+    struct VaultReleaseState {
+        bool emergencyMode;
+        uint256 inactivityPeriod;
+        uint256 lastProofOfLife;
+    }
+
     error AtLeastOneGuardian();
     error InvalidApprovalThreshold();
     error VaultNotActive();
@@ -66,14 +85,22 @@ contract SpooVault is ERC721, Ownable {
     error DocumentNotExist();
     error AlreadyHasAccess();
     error NFTRequired();
+    error RequestNotExist();
     error RequestNotPending();
     error RequestExpired();
+    error RequestAlreadyPending();
     error AlreadyApproved();
     error NoValidInvite();
     error InviteExpired();
     error NotOwnerOrApproved();
-    
-    // Mappings
+    error ZeroAddressGuardian();
+    error DuplicateGuardian();
+    error AlreadyGuardian();
+    error OnlyVaultCreator();
+    error InvalidInactivityPeriod();
+    error VaultNotExist();
+    error ReleaseConditionLocked();
+
     mapping(uint256 => Vault) public vaults;
     mapping(uint256 => Document) public documents;
     mapping(uint256 => AccessRequest) public accessRequests;
@@ -82,12 +109,18 @@ contract SpooVault is ERC721, Ownable {
     mapping(uint256 => mapping(address => AccessLevel)) public userAccessLevel;
     mapping(address => GuardianInvite[]) public guardianInvites;
     mapping(uint256 => mapping(address => bool)) public hasApprovedRequest;
+    mapping(uint256 => mapping(address => uint256)) public latestRequestId;
     mapping(uint256 => string) public tokenURIs;
-    mapping(address => uint256[]) private _ownedTokens;
-    mapping(uint256 => uint256) private _ownedTokensIndex;
-    uint256 private _totalSupply;
-    
-    // Events
+    mapping(uint256 => uint256) private tokenVaultMapping;
+    mapping(address => mapping(uint256 => uint256)) private _ownedVaultTokenBalance;
+    uint256 private _activeTokenSupply;
+    mapping(uint256 => ReleaseCondition) public documentReleaseCondition;
+
+    // Access versions let us invalidate all prior document grants for a user+vault in O(1).
+    mapping(uint256 => mapping(address => uint256)) private _vaultAccessVersion;
+    mapping(uint256 => mapping(address => uint256)) private _documentAccessVersion;
+    mapping(uint256 => VaultReleaseState) private _vaultReleaseStates;
+
     event VaultCreated(uint256 indexed vaultId, address indexed creator, string name);
     event GuardianAdded(uint256 indexed vaultId, address indexed guardian);
     event GuardianRemoved(uint256 indexed vaultId, address indexed guardian);
@@ -98,11 +131,16 @@ contract SpooVault is ERC721, Ownable {
     event NFTMinted(uint256 indexed tokenId, address indexed to, uint256 indexed vaultId);
     event NFTBurned(uint256 indexed tokenId);
     event AccessRevoked(uint256 indexed documentId, address indexed user);
-    
-    constructor() ERC721("SpooVault Access Token", "SPVT") Ownable(msg.sender) {}
-    
+    event VaultReleaseConfigured(uint256 indexed vaultId, uint256 inactivityPeriod);
+    event ProofOfLifeRecorded(uint256 indexed vaultId, address indexed owner, uint256 timestamp);
+    event EmergencyModeUpdated(uint256 indexed vaultId, bool enabled);
+    event DocumentReleaseConditionSet(uint256 indexed documentId, ReleaseCondition condition);
+
+    constructor() ERC721("SpooVault Access Token", "SPVT") {}
+
     /**
-     * @dev Create a new vault with multi-signature guardians
+     * @dev Create a new vault with guardian invites.
+     * msg.sender becomes the first active guardian.
      */
     function createVault(
         string memory name,
@@ -110,12 +148,31 @@ contract SpooVault is ERC721, Ownable {
         address[] memory guardians,
         uint256 approvalThreshold
     ) external returns (uint256) {
-        if (guardians.length == 0) revert AtLeastOneGuardian();
-        if (approvalThreshold == 0 || approvalThreshold > guardians.length) revert InvalidApprovalThreshold();
-        
-        _vaultIdCounter.increment();
-        uint256 vaultId = _vaultIdCounter.current();
-        
+        uint256 externalGuardianCount = 0;
+
+        for (uint256 i = 0; i < guardians.length; i++) {
+            address guardian = guardians[i];
+            if (guardian == address(0)) revert ZeroAddressGuardian();
+
+            for (uint256 j = 0; j < i; j++) {
+                if (guardians[j] == guardian) revert DuplicateGuardian();
+            }
+
+            if (guardian != msg.sender) {
+                externalGuardianCount++;
+            }
+        }
+
+        if (externalGuardianCount == 0) revert AtLeastOneGuardian();
+
+        uint256 totalGuardianCount = externalGuardianCount + 1;
+        if (approvalThreshold == 0 || approvalThreshold > totalGuardianCount) {
+            revert InvalidApprovalThreshold();
+        }
+
+        _vaultIdCounter += 1;
+        uint256 vaultId = _vaultIdCounter;
+
         Vault storage newVault = vaults[vaultId];
         newVault.id = vaultId;
         newVault.creator = msg.sender;
@@ -124,55 +181,74 @@ contract SpooVault is ERC721, Ownable {
         newVault.approvalThreshold = approvalThreshold;
         newVault.isActive = true;
         newVault.createdAt = block.timestamp;
-        
-        // Add creator as first guardian
+
+        _vaultReleaseStates[vaultId] = VaultReleaseState({
+            emergencyMode: false,
+            inactivityPeriod: 30 days,
+            lastProofOfLife: block.timestamp
+        });
+
         newVault.guardians.push(msg.sender);
         isGuardian[vaultId][msg.sender] = true;
-        
-        // Add other guardians
-        for (uint i = 0; i < guardians.length; i++) {
-            if (guardians[i] != msg.sender) {
-                newVault.guardians.push(guardians[i]);
-                isGuardian[vaultId][guardians[i]] = true;
-                
-                // Create guardian invite
-                guardianInvites[guardians[i]].push(GuardianInvite({
-                    guardian: guardians[i],
+
+        for (uint256 i = 0; i < guardians.length; i++) {
+            address guardian = guardians[i];
+            if (guardian == msg.sender) {
+                continue;
+            }
+
+            guardianInvites[guardian].push(
+                GuardianInvite({
+                    guardian: guardian,
                     vaultId: vaultId,
                     accepted: false,
                     expiresAt: block.timestamp + 7 days
-                }));
-            }
+                })
+            );
         }
-        
+
         emit VaultCreated(vaultId, msg.sender, name);
         return vaultId;
     }
-    
+
     /**
-     * @dev Accept guardian invitation
+     * @dev Accept a guardian invitation. Guardian power is granted only after acceptance.
      */
     function acceptGuardianInvite(uint256 vaultId) external {
         if (!vaults[vaultId].isActive) revert VaultNotActive();
-        
-        bool found = false;
+        if (isGuardian[vaultId][msg.sender]) revert AlreadyGuardian();
+
         GuardianInvite[] storage invites = guardianInvites[msg.sender];
-        
-        for (uint i = 0; i < invites.length; i++) {
-            if (invites[i].vaultId == vaultId && !invites[i].accepted) {
-                if (invites[i].expiresAt <= block.timestamp) revert InviteExpired();
-                invites[i].accepted = true;
-                found = true;
-                break;
+        bool hasInvite = false;
+        bool hasExpiredInvite = false;
+
+        for (uint256 i = 0; i < invites.length; i++) {
+            GuardianInvite storage invite = invites[i];
+            if (invite.vaultId != vaultId || invite.accepted) {
+                continue;
             }
+
+            hasInvite = true;
+
+            if (invite.expiresAt <= block.timestamp) {
+                hasExpiredInvite = true;
+                continue;
+            }
+
+            invite.accepted = true;
+            isGuardian[vaultId][msg.sender] = true;
+            vaults[vaultId].guardians.push(msg.sender);
+
+            emit GuardianAdded(vaultId, msg.sender);
+            return;
         }
-        
-        if (!found) revert NoValidInvite();
-        emit GuardianAdded(vaultId, msg.sender);
+
+        if (hasExpiredInvite) revert InviteExpired();
+        if (!hasInvite) revert NoValidInvite();
     }
-    
+
     /**
-     * @dev Add document to vault (encrypted metadata + IPFS hash)
+     * @dev Add document metadata and encrypted content reference.
      */
     function addDocument(
         uint256 vaultId,
@@ -180,13 +256,122 @@ contract SpooVault is ERC721, Ownable {
         string memory ipfsHash,
         AccessLevel requiredAccess
     ) external returns (uint256) {
+        return _addDocument(
+            vaultId,
+            encryptedMetadata,
+            ipfsHash,
+            requiredAccess,
+            ReleaseCondition.ANYTIME
+        );
+    }
+
+    /**
+     * @dev Add document with explicit release condition policy.
+     */
+    function addDocumentWithReleaseCondition(
+        uint256 vaultId,
+        string memory encryptedMetadata,
+        string memory ipfsHash,
+        AccessLevel requiredAccess,
+        ReleaseCondition releaseCondition
+    ) external returns (uint256) {
+        return _addDocument(
+            vaultId,
+            encryptedMetadata,
+            ipfsHash,
+            requiredAccess,
+            releaseCondition
+        );
+    }
+
+    /**
+     * @dev Configure how long owner inactivity unlocks post-death mode.
+     */
+    function configureVaultRelease(uint256 vaultId, uint256 inactivityPeriod) external {
+        if (vaults[vaultId].id == 0) revert VaultNotExist();
+        if (vaults[vaultId].creator != msg.sender) revert OnlyVaultCreator();
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
+        if (inactivityPeriod < 1 days || inactivityPeriod > 365 days) {
+            revert InvalidInactivityPeriod();
+        }
+
+        _vaultReleaseStates[vaultId].inactivityPeriod = inactivityPeriod;
+        emit VaultReleaseConfigured(vaultId, inactivityPeriod);
+    }
+
+    /**
+     * @dev Owner heartbeat to keep vault in live mode.
+     */
+    function proveLife(uint256 vaultId) external {
+        if (vaults[vaultId].id == 0) revert VaultNotExist();
+        if (vaults[vaultId].creator != msg.sender) revert OnlyVaultCreator();
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
+
+        _vaultReleaseStates[vaultId].lastProofOfLife = block.timestamp;
+        emit ProofOfLifeRecorded(vaultId, msg.sender, block.timestamp);
+    }
+
+    /**
+     * @dev Owner can toggle emergency mode for rapid release workflows.
+     */
+    function setEmergencyMode(uint256 vaultId, bool enabled) external {
+        if (vaults[vaultId].id == 0) revert VaultNotExist();
+        if (vaults[vaultId].creator != msg.sender) revert OnlyVaultCreator();
+        if (!vaults[vaultId].isActive) revert VaultNotActive();
+
+        _vaultReleaseStates[vaultId].emergencyMode = enabled;
+        emit EmergencyModeUpdated(vaultId, enabled);
+    }
+
+    /**
+     * @dev Guardians can update an existing document release condition.
+     */
+    function setDocumentReleaseCondition(
+        uint256 documentId,
+        ReleaseCondition condition
+    ) external {
+        if (documents[documentId].id == 0) revert DocumentNotExist();
+        uint256 vaultId = documents[documentId].vaultId;
+        if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
+
+        documentReleaseCondition[documentId] = condition;
+        emit DocumentReleaseConditionSet(documentId, condition);
+    }
+
+    /**
+     * @dev Fetch vault release state summary.
+     */
+    function getVaultReleaseState(uint256 vaultId) external view returns (
+        bool emergencyMode,
+        uint256 inactivityPeriod,
+        uint256 lastProofOfLife,
+        bool postDeathUnlocked
+    ) {
+        if (vaults[vaultId].id == 0) revert VaultNotExist();
+        VaultReleaseState storage state = _vaultReleaseStates[vaultId];
+        bool unlocked = _isPostDeathUnlocked(vaultId);
+        return (
+            state.emergencyMode,
+            state.inactivityPeriod,
+            state.lastProofOfLife,
+            unlocked
+        );
+    }
+
+    function _addDocument(
+        uint256 vaultId,
+        string memory encryptedMetadata,
+        string memory ipfsHash,
+        AccessLevel requiredAccess,
+        ReleaseCondition releaseCondition
+    ) internal returns (uint256) {
         if (!vaults[vaultId].isActive) revert VaultNotActive();
         if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
         if (bytes(ipfsHash).length == 0) revert IPFSHashRequired();
-        
-        _documentIdCounter.increment();
-        uint256 documentId = _documentIdCounter.current();
-        
+
+        _documentIdCounter += 1;
+        uint256 documentId = _documentIdCounter;
+
         documents[documentId] = Document({
             id: documentId,
             vaultId: vaultId,
@@ -196,42 +381,40 @@ contract SpooVault is ERC721, Ownable {
             uploadedAt: block.timestamp,
             requiredAccess: requiredAccess
         });
-        
-        // Grant access to uploader
-        hasAccess[documentId][msg.sender] = true;
-        userAccessLevel[documentId][msg.sender] = AccessLevel.ADMIN;
-        
+
+        documentReleaseCondition[documentId] = releaseCondition;
+        _grantAccess(0, documentId, msg.sender);
+
         emit DocumentAdded(documentId, vaultId, ipfsHash);
+        emit DocumentReleaseConditionSet(documentId, releaseCondition);
         return documentId;
     }
-    
+
     /**
-     * @dev Request access to a document
+     * @dev Request access to a document. Requires current ownership of a vault NFT.
      */
     function requestAccess(uint256 documentId) external returns (uint256) {
         if (documents[documentId].id == 0) revert DocumentNotExist();
-        if (hasAccess[documentId][msg.sender]) revert AlreadyHasAccess();
-        
-        // Check if user owns an NFT for this vault
+        if (_hasActiveAccess(documentId, msg.sender)) revert AlreadyHasAccess();
+        if (!_isReleaseConditionSatisfied(documentId)) revert ReleaseConditionLocked();
+
         uint256 vaultId = documents[documentId].vaultId;
-        bool hasNFT = false;
-        
-        uint256[] storage tokens = _ownedTokens[msg.sender];
-        for (uint256 i = 0; i < tokens.length; i++) {
-            uint256 tokenId = tokens[i];
-            if (tokenVaultMapping[tokenId] == vaultId) {
-                hasNFT = true;
-                break;
+        if (!_ownsVaultToken(msg.sender, vaultId)) revert NFTRequired();
+
+        uint256 existingRequestId = latestRequestId[documentId][msg.sender];
+        if (existingRequestId != 0) {
+            AccessRequest storage existingRequest = accessRequests[existingRequestId];
+            if (
+                existingRequest.status == RequestStatus.PENDING &&
+                existingRequest.expiresAt > block.timestamp
+            ) {
+                revert RequestAlreadyPending();
             }
         }
-        
-        if (!hasNFT) revert NFTRequired();
-        
-        // Create access request
-        uint256 requestId = uint256(keccak256(abi.encodePacked(
-            documentId, msg.sender, block.timestamp
-        )));
-        
+
+        _requestIdCounter += 1;
+        uint256 requestId = _requestIdCounter;
+
         accessRequests[requestId] = AccessRequest({
             requestId: requestId,
             documentId: documentId,
@@ -241,106 +424,102 @@ contract SpooVault is ERC721, Ownable {
             expiresAt: block.timestamp + 3 days,
             createdAt: block.timestamp
         });
-        
+
+        latestRequestId[documentId][msg.sender] = requestId;
+
         emit AccessRequested(requestId, documentId, msg.sender);
         return requestId;
     }
-    
+
     /**
-     * @dev Approve access request (guardian only)
+     * @dev Approve an access request (guardian only).
      */
     function approveAccess(uint256 requestId) external {
         AccessRequest storage request = accessRequests[requestId];
+        if (request.requestId == 0) revert RequestNotExist();
         if (request.status != RequestStatus.PENDING) revert RequestNotPending();
         if (request.expiresAt <= block.timestamp) revert RequestExpired();
-        
+
         uint256 vaultId = documents[request.documentId].vaultId;
         if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
         if (hasApprovedRequest[requestId][msg.sender]) revert AlreadyApproved();
-        
+
         hasApprovedRequest[requestId][msg.sender] = true;
         request.approvedBy.push(msg.sender);
-        
+
         emit AccessApproved(requestId, msg.sender);
-        
-        // Check if threshold reached
+
         if (request.approvedBy.length >= vaults[vaultId].approvalThreshold) {
+            if (!_ownsVaultToken(request.requester, vaultId)) {
+                request.status = RequestStatus.REJECTED;
+                return;
+            }
+
             request.status = RequestStatus.APPROVED;
-            grantAccess(request.documentId, request.requester);
+            _grantAccess(requestId, request.documentId, request.requester);
         }
     }
-    
+
     /**
-     * @dev Grant access to document
-     */
-    function grantAccess(uint256 documentId, address user) internal {
-        hasAccess[documentId][user] = true;
-        userAccessLevel[documentId][user] = documents[documentId].requiredAccess;
-        
-        emit AccessGranted(documentId, documentId, user);
-    }
-    
-    /**
-     * @dev Revoke access from user
+     * @dev Revoke access from user for a specific document.
      */
     function revokeAccess(uint256 documentId, address user) external {
         if (documents[documentId].id == 0) revert DocumentNotExist();
+
         uint256 vaultId = documents[documentId].vaultId;
         if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
-        
+
         hasAccess[documentId][user] = false;
         delete userAccessLevel[documentId][user];
-        
+        delete _documentAccessVersion[documentId][user];
+
         emit AccessRevoked(documentId, user);
     }
-    
+
     /**
-     * @dev Mint NFT access token
+     * @dev Mint NFT access token for a vault.
      */
-    function mintAccessToken(uint256 vaultId, address to, string memory tokenURI) 
-        external returns (uint256) {
+    function mintAccessToken(
+        uint256 vaultId,
+        address to,
+        string memory tokenURIValue
+    ) external returns (uint256) {
         if (!vaults[vaultId].isActive) revert VaultNotActive();
         if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
-        
-        _tokenIdCounter.increment();
-        uint256 tokenId = _tokenIdCounter.current();
-        
-        _safeMint(to, tokenId);
-        _totalSupply += 1;
-        tokenURIs[tokenId] = tokenURI;
+
+        _tokenIdCounter += 1;
+        uint256 tokenId = _tokenIdCounter;
+
         tokenVaultMapping[tokenId] = vaultId;
-        
+        _safeMint(to, tokenId);
+        tokenURIs[tokenId] = tokenURIValue;
+
         emit NFTMinted(tokenId, to, vaultId);
         return tokenId;
     }
-    
+
     /**
-     * @dev Burn NFT access token (revoke all access)
+     * @dev Burn NFT access token and invalidate all prior grants for owner+vault in O(1).
      */
     function burnAccessToken(uint256 tokenId) external {
         address owner = ownerOf(tokenId);
-        if (!_isAuthorized(owner, msg.sender, tokenId)) revert NotOwnerOrApproved();
-        
-        uint256 vaultId = tokenVaultMapping[tokenId];
-        
-        // Revoke all document access for this vault
-        for (uint256 i = 1; i <= _documentIdCounter.current(); i++) {
-            if (documents[i].vaultId == vaultId) {
-                hasAccess[i][ownerOf(tokenId)] = false;
-                delete userAccessLevel[i][ownerOf(tokenId)];
-            }
+        if (!_isTokenOwnerOrApproved(owner, msg.sender, tokenId)) {
+            revert NotOwnerOrApproved();
         }
-        
+
+        uint256 vaultId = tokenVaultMapping[tokenId];
+        _vaultAccessVersion[vaultId][owner] = _currentAccessVersion(vaultId, owner) + 1;
+
         _burn(tokenId);
-        _totalSupply -= 1;
+
         delete tokenVaultMapping[tokenId];
         delete tokenURIs[tokenId];
-        
+
         emit NFTBurned(tokenId);
     }
-    
+
     /**
-     * @dev Get vault details
+     * @dev Get vault details.
      */
     function getVault(uint256 vaultId) external view returns (
         uint256 id,
@@ -364,82 +543,171 @@ contract SpooVault is ERC721, Ownable {
             vault.createdAt
         );
     }
-    
+
     /**
-     * @dev Get user's pending invites
+     * @dev Get user's pending invites.
      */
     function getPendingInvites(address user) external view returns (GuardianInvite[] memory) {
         GuardianInvite[] storage invites = guardianInvites[user];
         uint256 count = 0;
-        
+
         for (uint256 i = 0; i < invites.length; i++) {
             if (!invites[i].accepted && invites[i].expiresAt > block.timestamp) {
                 count++;
             }
         }
-        
+
         GuardianInvite[] memory pending = new GuardianInvite[](count);
         uint256 index = 0;
-        
+
         for (uint256 i = 0; i < invites.length; i++) {
             if (!invites[i].accepted && invites[i].expiresAt > block.timestamp) {
                 pending[index] = invites[i];
                 index++;
             }
         }
-        
+
         return pending;
     }
 
     /**
-     * @dev Return total minted tokens minus burned tokens.
+     * @dev Return vault id attached to token id (0 if missing/deleted).
      */
-    function totalSupply() external view returns (uint256) {
-        return _totalSupply;
+    function getTokenVault(uint256 tokenId) external view returns (uint256) {
+        return tokenVaultMapping[tokenId];
     }
 
     /**
-     * @dev Return token id at index for an owner (ERC721Enumerable-like).
+     * @dev Returns whether user currently holds any token for vault.
      */
-    function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256) {
-        return _ownedTokens[owner][index];
+    function hasVaultToken(address user, uint256 vaultId) external view returns (bool) {
+        return _ownsVaultToken(user, vaultId);
     }
-    
-    // Override required functions
-    function _update(address to, uint256 tokenId, address auth)
-        internal
-        override(ERC721)
-        returns (address)
-    {
+
+    /**
+     * @dev Returns effective access, tied to both granted access and live vault token ownership.
+     */
+    function hasActiveAccess(uint256 documentId, address user) external view returns (bool) {
+        if (documents[documentId].id == 0) {
+            return false;
+        }
+        return _hasActiveAccess(documentId, user);
+    }
+
+    /**
+     * @dev Total active NFT supply (minted - burned).
+     */
+    function totalSupply() external view returns (uint256) {
+        return _activeTokenSupply;
+    }
+
+    /**
+     * @dev Return token URI from storage mapping.
+     */
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        ownerOf(tokenId);
+        return tokenURIs[tokenId];
+    }
+
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = super._update(to, tokenId, auth);
-        if (from != address(0)) {
-            _removeTokenFromOwnerEnumeration(from, tokenId);
+        uint256 vaultId = tokenVaultMapping[tokenId];
+
+        if (from == address(0)) {
+            _activeTokenSupply += 1;
+        } else if (vaultId != 0 && _ownedVaultTokenBalance[from][vaultId] > 0) {
+            _ownedVaultTokenBalance[from][vaultId] -= 1;
         }
-        if (to != address(0)) {
-            _addTokenToOwnerEnumeration(to, tokenId);
+
+        if (to == address(0)) {
+            if (_activeTokenSupply > 0) {
+                _activeTokenSupply -= 1;
+            }
+        } else if (vaultId != 0) {
+            _ownedVaultTokenBalance[to][vaultId] += 1;
+            if (_vaultAccessVersion[vaultId][to] == 0) {
+                _vaultAccessVersion[vaultId][to] = 1;
+            }
         }
+
         return from;
     }
 
-    function _addTokenToOwnerEnumeration(address to, uint256 tokenId) private {
-        _ownedTokensIndex[tokenId] = _ownedTokens[to].length;
-        _ownedTokens[to].push(tokenId);
+    function _grantAccess(uint256 requestId, uint256 documentId, address user) internal {
+        uint256 vaultId = documents[documentId].vaultId;
+        uint256 currentVersion = _currentAccessVersion(vaultId, user);
+
+        hasAccess[documentId][user] = true;
+        _documentAccessVersion[documentId][user] = currentVersion;
+        userAccessLevel[documentId][user] = documents[documentId].requiredAccess;
+
+        emit AccessGranted(requestId, documentId, user);
     }
 
-    function _removeTokenFromOwnerEnumeration(address from, uint256 tokenId) private {
-        uint256 lastIndex = _ownedTokens[from].length - 1;
-        uint256 tokenIndex = _ownedTokensIndex[tokenId];
-
-        if (tokenIndex != lastIndex) {
-            uint256 lastTokenId = _ownedTokens[from][lastIndex];
-            _ownedTokens[from][tokenIndex] = lastTokenId;
-            _ownedTokensIndex[lastTokenId] = tokenIndex;
+    function _hasActiveAccess(uint256 documentId, address user) internal view returns (bool) {
+        uint256 vaultId = documents[documentId].vaultId;
+        if (isGuardian[vaultId][user]) {
+            return true;
         }
 
-        _ownedTokens[from].pop();
-        delete _ownedTokensIndex[tokenId];
+        if (!hasAccess[documentId][user]) {
+            return false;
+        }
+
+        if (!_ownsVaultToken(user, vaultId)) {
+            return false;
+        }
+
+        return _documentAccessVersion[documentId][user] == _currentAccessVersion(vaultId, user);
     }
 
-    // Additional mapping for token to vault
-    mapping(uint256 => uint256) private tokenVaultMapping;
+    function _currentAccessVersion(uint256 vaultId, address user) internal view returns (uint256) {
+        uint256 version = _vaultAccessVersion[vaultId][user];
+        return version == 0 ? 1 : version;
+    }
+
+    function _isPostDeathUnlocked(uint256 vaultId) internal view returns (bool) {
+        VaultReleaseState storage state = _vaultReleaseStates[vaultId];
+        if (state.inactivityPeriod == 0) {
+            return false;
+        }
+        return block.timestamp >= state.lastProofOfLife + state.inactivityPeriod;
+    }
+
+    function _isReleaseConditionSatisfied(uint256 documentId) internal view returns (bool) {
+        uint256 vaultId = documents[documentId].vaultId;
+        ReleaseCondition condition = documentReleaseCondition[documentId];
+
+        if (condition == ReleaseCondition.ANYTIME) {
+            return true;
+        }
+
+        bool postDeathUnlocked = _isPostDeathUnlocked(vaultId);
+
+        if (condition == ReleaseCondition.LIVE_ONLY) {
+            return !postDeathUnlocked;
+        }
+
+        if (condition == ReleaseCondition.EMERGENCY_ONLY) {
+            return _vaultReleaseStates[vaultId].emergencyMode || postDeathUnlocked;
+        }
+
+        if (condition == ReleaseCondition.POST_DEATH_ONLY) {
+            return postDeathUnlocked;
+        }
+
+        return false;
+    }
+
+    function _ownsVaultToken(address user, uint256 vaultId) internal view returns (bool) {
+        return _ownedVaultTokenBalance[user][vaultId] > 0;
+    }
+
+    function _isTokenOwnerOrApproved(address owner, address spender, uint256 tokenId) internal view returns (bool) {
+        return (
+            spender == owner ||
+            getApproved(tokenId) == spender ||
+            isApprovedForAll(owner, spender)
+        );
+    }
 }

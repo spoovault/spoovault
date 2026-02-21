@@ -28,9 +28,12 @@ import {
   VaultData,
   DocumentData,
   ActivityEvent,
+  PendingApprovalData,
 } from "../services/contract.service";
 import { toast } from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
+import { buttonClasses } from "../utils/buttonClasses";
+import { shortenAddress } from "../utils/helpers";
 
 const Dashboard = () => {
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
@@ -45,6 +48,8 @@ const Dashboard = () => {
     totalNFTs: 0,
   });
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalData[]>([]);
+  const [approvingRequestId, setApprovingRequestId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isConnected && provider && isFujiNetwork) {
@@ -53,7 +58,7 @@ const Dashboard = () => {
     } else {
       setLoading(false);
     }
-  }, [isConnected, provider, signer, isFujiNetwork]);
+  }, [account, isConnected, provider, signer, isFujiNetwork]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -64,6 +69,9 @@ const Dashboard = () => {
         contractService.getTotalSupply(),
         contractService.getRecentActivity(5),
       ]);
+      const approvals = account
+        ? await contractService.fetchPendingApprovalsForGuardian(account, 5)
+        : [];
 
       const guardianSet = new Set<string>();
       vaultsData.forEach((vault) => {
@@ -75,6 +83,7 @@ const Dashboard = () => {
       setVaults(vaultsData);
       setDocuments(docsData);
       setRecentActivity(activity);
+      setPendingApprovals(approvals);
       setStats({
         totalVaults: vaultsData.length,
         totalDocuments: docsData.length,
@@ -103,6 +112,19 @@ const Dashboard = () => {
     navigate("/vaults?create=true");
   };
 
+  const handleApproveRequest = async (requestId: number) => {
+    setApprovingRequestId(requestId);
+    try {
+      await contractService.approveAccess(requestId);
+      toast.success(`Approved request #${requestId}`);
+      await loadDashboardData();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to approve request");
+    } finally {
+      setApprovingRequestId(null);
+    }
+  };
+
   const docCountByVault = useMemo(() => {
     const counts: Record<number, number> = {};
     documents.forEach((doc) => {
@@ -125,12 +147,12 @@ const Dashboard = () => {
           </div>
           <h1 className="text-3xl font-bold mb-4">Welcome to SpooVault</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
-            Connect your wallet to manage real vaults and documents on Avalanche Fuji.
+            Connect your wallet to manage secure access vaults and family documents on Avalanche Fuji.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button
               size="lg"
-              className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover:shadow-xl hover:shadow-brand-800/20"
+              className={buttonClasses.primaryLg}
               onPress={connect}
               startContent={<FiKey />}
             >
@@ -138,8 +160,7 @@ const Dashboard = () => {
             </Button>
             <Button
               size="lg"
-              variant="flat"
-              className="border border-gray-700"
+              className={buttonClasses.ghostLg}
               onPress={() => navigate("/")}
             >
               Learn More
@@ -163,7 +184,7 @@ const Dashboard = () => {
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-yellow-500 to-orange-500 font-semibold"
+            className={buttonClasses.warningLg}
             onPress={() => window.ethereum && window.ethereum.request({
               method: "wallet_switchEthereumChain",
               params: [{ chainId: "0xA869" }]
@@ -179,7 +200,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-8">
       <div className="rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-6 lg:p-8">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-6">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 bg-gradient-to-br from-brand-700 to-brand-900 rounded-xl flex items-center justify-center">
@@ -194,17 +215,19 @@ const Dashboard = () => {
               </div>
             </div>
             <p className="text-gray-400">
-              Your on-chain vaults are ready. Create a new vault to get started.
+              Your access setup is ready. Protect documents now and define emergency or inheritance release rules.
             </p>
           </div>
-          <Button
-            className="bg-gradient-to-r from-brand-700 to-brand-900 font-semibold hover:shadow-xl hover:shadow-brand-800/20 transition-all"
-            onPress={handleCreateVault}
-            startContent={<FiPlus />}
-            size="lg"
-          >
-            Create Vault
-          </Button>
+          <div className="w-full sm:w-auto lg:min-w-fit">
+            <Button
+              className={`${buttonClasses.primaryLg} w-full sm:w-auto`}
+              onPress={handleCreateVault}
+              startContent={<FiPlus />}
+              size="lg"
+            >
+              Create Access Vault
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -231,7 +254,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">{stats.totalVaults}</h3>
-                <p className="text-gray-400 text-sm">Active Vaults</p>
+                <p className="text-gray-400 text-sm">Access Vaults</p>
               </CardBody>
             </Card>
 
@@ -243,7 +266,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">{stats.totalDocuments}</h3>
-                <p className="text-gray-400 text-sm">Documents</p>
+                <p className="text-gray-400 text-sm">Legacy Documents</p>
               </CardBody>
             </Card>
 
@@ -267,7 +290,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">{stats.totalNFTs}</h3>
-                <p className="text-gray-400 text-sm">NFT Tokens</p>
+                <p className="text-gray-400 text-sm">Access Passes</p>
               </CardBody>
             </Card>
           </>
@@ -281,7 +304,7 @@ const Dashboard = () => {
               <FiActivity />
               <h2 className="text-xl font-semibold">Recent Activity</h2>
             </div>
-            <Button variant="light" size="sm" onPress={() => navigate("/vaults")}>View Vaults</Button>
+            <Button className={buttonClasses.ghostSm} onPress={() => navigate("/vaults")}>View Access Vaults</Button>
           </CardHeader>
           <CardBody className="p-0">
             {loading ? (
@@ -341,52 +364,106 @@ const Dashboard = () => {
           </CardBody>
         </Card>
 
-        <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-          <CardHeader>
-            <h2 className="text-xl font-semibold">Quick Actions</h2>
-          </CardHeader>
-          <CardBody className="space-y-3">
-            <Link to="/vaults">
-              <Button fullWidth variant="flat" className="justify-start h-12">
-                <FiShield className="mr-3" />
-                Create Vault
-              </Button>
-            </Link>
-            <Link to="/documents">
-              <Button fullWidth variant="flat" className="justify-start h-12">
-                <FiFile className="mr-3" />
-                Upload Document
-              </Button>
-            </Link>
-            <Link to="/nfts">
-              <Button fullWidth variant="flat" className="justify-start h-12">
-                <FiKey className="mr-3" />
-                Mint NFT
-              </Button>
-            </Link>
-            <Link to="/vaults">
-              <Button fullWidth variant="flat" className="justify-start h-12">
-                <FiUsers className="mr-3" />
-                Add Guardian
-              </Button>
-            </Link>
-          </CardBody>
-        </Card>
+        <div className="space-y-6">
+          <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+            <CardHeader>
+              <h2 className="text-xl font-semibold">Quick Actions</h2>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              <Link to="/vaults">
+                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
+                  <FiShield className="mr-3" />
+                  Create Access Vault
+                </Button>
+              </Link>
+              <Link to="/documents">
+                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
+                  <FiFile className="mr-3" />
+                  Upload Legacy File
+                </Button>
+              </Link>
+              <Link to="/nfts">
+                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
+                  <FiKey className="mr-3" />
+                  Mint Beneficiary Pass
+                </Button>
+              </Link>
+              <Link to="/vaults">
+                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
+                  <FiUsers className="mr-3" />
+                  Add Guardian
+                </Button>
+              </Link>
+            </CardBody>
+          </Card>
+
+          <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+            <CardHeader className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FiCheckCircle />
+                <h2 className="text-xl font-semibold">Approval Queue</h2>
+              </div>
+              <Chip size="sm" variant="flat" color="warning">
+                {pendingApprovals.length} Pending
+              </Chip>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              {loading ? (
+                <>
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="rounded-lg">
+                      <div className="h-16 rounded-lg bg-default-300" />
+                    </Skeleton>
+                  ))}
+                </>
+              ) : pendingApprovals.length === 0 ? (
+                <p className="text-sm text-gray-400">No pending approvals assigned to your guardian account.</p>
+              ) : (
+                pendingApprovals.map((item) => (
+                  <div key={item.requestId} className="rounded-xl border border-gray-800 bg-gray-900/45 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{item.vaultName}</p>
+                        <p className="text-xs text-gray-400">
+                          Request #{item.requestId} • Doc #{item.documentId}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className={buttonClasses.primarySm}
+                        onPress={() => handleApproveRequest(item.requestId)}
+                        isLoading={approvingRequestId === item.requestId}
+                        isDisabled={approvingRequestId !== null}
+                      >
+                        Approve
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span>{shortenAddress(item.requester)}</span>
+                      <span>
+                        Expires {formatDistanceToNow(new Date(item.expiresAt * 1000), { addSuffix: true })}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+        </div>
       </div>
 
       <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-        <CardHeader className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FiTrendingUp />
-            <h2 className="text-xl font-semibold">Vault Activity</h2>
-          </div>
+          <CardHeader className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FiTrendingUp />
+              <h2 className="text-xl font-semibold">Vault Activity</h2>
+            </div>
           <Button
-            variant="light"
-            size="sm"
+            className={buttonClasses.outlineSm}
             startContent={<FiArrowUpRight />}
             onPress={() => navigate("/vaults")}
           >
-            View All
+            View All Vaults
           </Button>
         </CardHeader>
         <CardBody className="space-y-6">
@@ -404,7 +481,7 @@ const Dashboard = () => {
               ))}
             </div>
           ) : vaults.length === 0 ? (
-            <div className="text-center text-gray-400">No vaults yet.</div>
+            <div className="text-center text-gray-400">No access vaults yet.</div>
           ) : (
             vaults.map((vault) => {
               const docCount = docCountByVault[vault.id] || 0;
