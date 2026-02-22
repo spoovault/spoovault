@@ -29,6 +29,7 @@ import {
 import { toast } from "react-hot-toast";
 import { formatDate, isValidAddress, shortenAddress } from "../utils/helpers";
 import { buttonClasses } from "../utils/buttonClasses";
+import { captureError } from "../services/telemetry.service";
 
 const NFTGallery = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -76,6 +77,7 @@ const NFTGallery = () => {
       setTotalSupply(supply);
     } catch (error) {
       console.error("Error loading tokens:", error);
+      captureError("nftGallery.loadTokens", error, { account: account || "" });
       const message = error instanceof Error ? error.message : "Failed to load tokens";
       toast.error(message);
     } finally {
@@ -132,6 +134,7 @@ const NFTGallery = () => {
       onClose();
       loadTokens();
     } catch (error: any) {
+      captureError("nftGallery.mint", error, { vaultId: form.vaultId, recipient: form.recipient });
       toast.error(error.message || "Failed to mint token");
     } finally {
       setMinting(false);
@@ -145,6 +148,7 @@ const NFTGallery = () => {
       toast.success(`Token #${tokenId} burned`);
       loadTokens();
     } catch (error: any) {
+      captureError("nftGallery.burn", error, { tokenId });
       toast.error(error.message || "Failed to burn token");
     } finally {
       setBurningTokenId(null);

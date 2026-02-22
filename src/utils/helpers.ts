@@ -38,8 +38,12 @@ export const decryptData = (encryptedData: string, key: string): string => {
 /**
  * Upload file to IPFS (wrapper for ipfsService)
  */
-export const uploadToIPFS = async (file: File, metadata: any = {}): Promise<{ hash: string; size: number }> => {
-  return ipfsService.uploadFile(file, metadata);
+export const uploadToIPFS = async (
+  file: File,
+  metadata: any = {},
+  signal?: AbortSignal
+): Promise<{ hash: string; size: number }> => {
+  return ipfsService.uploadFile(file, metadata, signal);
 };
 
 /**

@@ -31,7 +31,8 @@ const buildAuthHeaders = (): Record<string, string> => {
 
 const uploadFile = async (
   file: File,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, any> = {},
+  signal?: AbortSignal
 ): Promise<{ hash: string; size: number }> => {
   if (!isConfigured()) {
     throw new Error("IPFS is not configured");
@@ -54,6 +55,7 @@ const uploadFile = async (
         headers: buildAuthHeaders(),
         timeout: 90000,
         maxBodyLength: Infinity,
+        signal,
       }
     );
 
@@ -62,8 +64,11 @@ const uploadFile = async (
       size: response.data.PinSize,
     };
   } catch (error: any) {
+    const isCanceled = error?.code === "ERR_CANCELED";
     const isTimeout = error?.code === "ECONNABORTED";
-    const message = isTimeout
+    const message = isCanceled
+      ? "IPFS upload canceled."
+      : isTimeout
       ? "IPFS upload timed out. Try again with a smaller file or better network."
       : error?.response?.data?.error?.reason ||
         error?.response?.data?.error ||

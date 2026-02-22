@@ -8,7 +8,9 @@ import Vaults from "./pages/Vaults";
 import Documents from "./pages/Documents";
 import NFTGallery from "./pages/NFTGallery";
 import Profile from "./pages/Profile";
+import AccessCenter from "./pages/AccessCenter";
 import AppLayout from "./layouts/AppLayout";
+import { captureError } from "./services/telemetry.service";
 
 function App() {
   useEffect(() => {
@@ -25,6 +27,28 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      captureError("window.error", event.error || event.message || "Unhandled window error", {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      captureError("window.unhandledrejection", event.reason || "Unhandled promise rejection");
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
+
   return (
     <HeroUIProvider>
       <Router>
@@ -34,6 +58,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/vaults" element={<Vaults />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/access" element={<AccessCenter />} />
             <Route path="/nfts" element={<NFTGallery />} />
             <Route path="/profile" element={<Profile />} />
           </Route>

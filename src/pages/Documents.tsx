@@ -31,6 +31,7 @@ import {
   FiCalendar,
   FiUser,
   FiKey,
+  FiSend,
 } from "react-icons/fi";
 import CryptoJS from "crypto-js";
 import { useWeb3 } from "../context/Web3Context";
@@ -50,13 +51,30 @@ import {
   uploadToIPFS,
   formatDate,
   formatFileSize,
+  isValidAddress,
 } from "../utils/helpers";
 import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
+import { captureError } from "../services/telemetry.service";
 
 const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
 
 type WordArray = { words: number[]; sigBytes: number };
+type ImportedKeyPayload = {
+  documentId?: number | string;
+  key?: string;
+  beneficiary?: string;
+  contract?: string;
+  chainId?: number | string;
+  type?: string;
+};
+type UploadStage =
+  | "idle"
+  | "encrypting"
+  | "uploading_ipfs"
+  | "submitting_tx"
+  | "confirming_tx"
+  | "finalizing";
 
 const wordArrayToUint8Array = (wordArray: WordArray): Uint8Array => {
   const { words, sigBytes } = wordArray;
@@ -77,6 +95,11 @@ const encryptFile = async (file: File, key: string): Promise<File> => {
 
 const Documents = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isShareModalOpen,
+    onOpen: onShareModalOpen,
+    onClose: onShareModalClose,
+  } = useDisclosure();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "accessible" | "encrypted">("all");
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
@@ -88,6 +111,8 @@ const Documents = () => {
   const [releaseConditionByDoc, setReleaseConditionByDoc] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
+  const [uploadAbortController, setUploadAbortController] = useState<AbortController | null>(null);
   const [requestingDocId, setRequestingDocId] = useState<number | null>(null);
 
   const [selectedVaultId, setSelectedVaultId] = useState<number | null>(null);
@@ -99,6 +124,8 @@ const Documents = () => {
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [lastDocumentId, setLastDocumentId] = useState<number | null>(null);
   const [keyBackupConfirmed, setKeyBackupConfirmed] = useState(false);
+  const [shareTargetDocId, setShareTargetDocId] = useState<number | null>(null);
+  const [shareRecipient, setShareRecipient] = useState("");
   const keyImportInputRef = useRef<HTMLInputElement | null>(null);
   const stepChipClass = "bg-brand-700/12 text-brand-300 border border-brand-700/35";
   const selectFieldWithIconClass =
@@ -142,6 +169,7 @@ const Documents = () => {
       setReleaseConditionByDoc(releaseMap);
     } catch (error) {
       console.error("Error loading documents:", error);
+      captureError("documents.loadData", error, { account: account || "" });
       const message = error instanceof Error ? error.message : "Failed to load documents";
       toast.error(message);
       setActiveAccessByDoc({});
@@ -207,9 +235,16 @@ const Documents = () => {
 
     try {
       const raw = await file.text();
-      const parsed = JSON.parse(raw) as { documentId?: number | string; key?: string };
+      const parsed = JSON.parse(raw) as ImportedKeyPayload;
       const documentId = Number(parsed.documentId);
       const key = (parsed.key || "").trim();
+      const beneficiary = (parsed.beneficiary || "").trim();
+      const fileContract = (parsed.contract || "").toLowerCase();
+      const expectedContract = (
+        (import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined) || ""
+      ).toLowerCase();
+      const fileChainId = Number(parsed.chainId);
+      const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID);
 
       if (!documentId || !Number.isFinite(documentId)) {
         throw new Error("Invalid backup file: missing documentId");
@@ -217,11 +252,35 @@ const Documents = () => {
       if (!/^[a-fA-F0-9]{64}$/.test(key)) {
         throw new Error("Invalid backup file: key format is not recognized");
       }
+      if (beneficiary) {
+        if (!isValidAddress(beneficiary)) {
+          throw new Error("Invalid key package: beneficiary wallet address is invalid");
+        }
+        if (!account) {
+          throw new Error("Connect the beneficiary wallet before importing this key package");
+        }
+        if (beneficiary.toLowerCase() !== account.toLowerCase()) {
+          throw new Error("This key package is issued for a different wallet");
+        }
+      }
+      if (fileContract && expectedContract && fileContract !== expectedContract) {
+        throw new Error("This key package is for a different SpooVault contract");
+      }
+      if (
+        Number.isFinite(fileChainId) &&
+        Number.isFinite(expectedChainId) &&
+        fileChainId > 0 &&
+        expectedChainId > 0 &&
+        fileChainId !== expectedChainId
+      ) {
+        throw new Error("This key package is for a different blockchain network");
+      }
 
       localStorage.setItem(getKeyStorageKey(documentId), key);
       toast.success(`Key imported for Document #${documentId}`);
       await loadData();
     } catch (error: any) {
+      captureError("documents.importKeyBackup", error);
       toast.error(error.message || "Failed to import key backup");
     }
   };
@@ -236,6 +295,85 @@ const Documents = () => {
     setLastKey(null);
     setLastDocumentId(null);
     setKeyBackupConfirmed(false);
+  };
+
+  const resetShareModal = () => {
+    setShareTargetDocId(null);
+    setShareRecipient("");
+    onShareModalClose();
+  };
+
+  const openShareModalForDocument = (documentId: number) => {
+    const key = getStoredKey(documentId);
+    if (!key) {
+      toast.error("Key not found locally for this document");
+      return;
+    }
+    setShareTargetDocId(documentId);
+    setShareRecipient("");
+    onShareModalOpen();
+  };
+
+  const downloadBeneficiaryKeyPackage = () => {
+    if (!shareTargetDocId) {
+      toast.error("Select a document first");
+      return;
+    }
+
+    const recipient = shareRecipient.trim();
+    if (!isValidAddress(recipient)) {
+      toast.error("Enter a valid beneficiary wallet address");
+      return;
+    }
+
+    const key = getStoredKey(shareTargetDocId);
+    if (!key) {
+      toast.error("Encryption key is missing for this document");
+      return;
+    }
+
+    const selectedDoc = documents.find((doc) => doc.id === shareTargetDocId);
+    if (!selectedDoc) {
+      toast.error("Document details not found");
+      return;
+    }
+
+    const payload = {
+      version: 1,
+      type: "beneficiary_key_package",
+      app: "SpooVault",
+      contract: import.meta.env.VITE_CONTRACT_ADDRESS || "",
+      chainId: Number(import.meta.env.VITE_CHAIN_ID) || 0,
+      vaultId: selectedDoc.vaultId,
+      documentId: shareTargetDocId,
+      beneficiary: recipient.toLowerCase(),
+      issuedBy: account || "",
+      issuedAt: new Date().toISOString(),
+      key,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `spoovault-doc-${shareTargetDocId}-beneficiary-key.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    if (account) {
+      try {
+        const flagKey = `spoovault-beneficiary-package-exported-${account.toLowerCase()}`;
+        localStorage.setItem(flagKey, "1");
+        window.dispatchEvent(new Event("spoovault-beneficiary-package-exported"));
+      } catch {
+        // ignore localStorage errors
+      }
+    }
+
+    toast.success("Beneficiary key package downloaded");
+    resetShareModal();
   };
 
   const documentsWithMetadata = useMemo(() => {
@@ -282,6 +420,13 @@ const Documents = () => {
       return true;
     });
 
+  const selectedShareDocument = useMemo(() => {
+    if (!shareTargetDocId) {
+      return null;
+    }
+    return documentsWithMetadata.find((item) => item.doc.id === shareTargetDocId) || null;
+  }, [documentsWithMetadata, shareTargetDocId]);
+
   const accessLabel = (level: number) => {
     if (level === 2) return "admin";
     if (level === 1) return "read_write";
@@ -293,6 +438,27 @@ const Documents = () => {
     if (condition === 2) return "emergency_only";
     if (condition === 3) return "post_death_only";
     return "anytime";
+  };
+
+  const uploadStageLabel = (stage: UploadStage): string => {
+    if (stage === "encrypting") return "Encrypting file locally";
+    if (stage === "uploading_ipfs") return "Uploading encrypted file to IPFS";
+    if (stage === "submitting_tx") return "Submitting blockchain transaction";
+    if (stage === "confirming_tx") return "Waiting for transaction confirmation";
+    if (stage === "finalizing") return "Finalizing and refreshing data";
+    return "Idle";
+  };
+
+  const isUploadAbortable =
+    uploading && (uploadStage === "encrypting" || uploadStage === "uploading_ipfs");
+
+  const handleAbortUpload = () => {
+    if (!isUploadAbortable || !uploadAbortController) {
+      toast.error("Upload can only be aborted before blockchain submission.");
+      return;
+    }
+    uploadAbortController.abort();
+    setUploadAbortController(null);
   };
 
   const handleUpload = async () => {
@@ -322,8 +488,11 @@ const Documents = () => {
       return;
     }
 
+    const abortController = new AbortController();
     setUploading(true);
+    setUploadAbortController(abortController);
     try {
+      setUploadStage("encrypting");
       const key = generateEncryptionKey();
       const metadata = {
         name: selectedFile.name,
@@ -333,8 +502,14 @@ const Documents = () => {
       };
       const encryptedMetadata = encryptData(JSON.stringify(metadata), key);
       const encryptedFile = await encryptFile(selectedFile, key);
-      const ipfsResult = await uploadToIPFS(encryptedFile, { name: selectedFile.name });
+      setUploadStage("uploading_ipfs");
+      const ipfsResult = await uploadToIPFS(
+        encryptedFile,
+        { name: selectedFile.name },
+        abortController.signal
+      );
 
+      setUploadStage("submitting_tx");
       const documentId = await contractService.addDocument(
         selectedVaultId,
         encryptedMetadata,
@@ -342,6 +517,7 @@ const Documents = () => {
         accessLevel,
         releaseCondition
       );
+      setUploadStage("confirming_tx");
 
       if (!documentId) {
         toast.error("Document uploaded but ID was not returned");
@@ -354,6 +530,7 @@ const Documents = () => {
         toast.success("Document uploaded successfully");
       }
 
+      setUploadStage("finalizing");
       setSelectedFile(null);
       setSelectedVaultId(null);
       setAccessLevel(0);
@@ -361,9 +538,19 @@ const Documents = () => {
       onClose();
       loadData();
     } catch (error: any) {
-      toast.error(error.message || "Failed to upload document");
+      captureError("documents.handleUpload", error, {
+        vaultId: selectedVaultId || 0,
+        releaseCondition,
+      });
+      const message = error?.message || "Failed to upload document";
+      const isCanceled =
+        message.toLowerCase().includes("canceled") ||
+        message.toLowerCase().includes("cancelled");
+      toast.error(isCanceled ? "Upload canceled." : message);
     } finally {
       setUploading(false);
+      setUploadStage("idle");
+      setUploadAbortController(null);
     }
   };
 
@@ -412,6 +599,7 @@ const Documents = () => {
       link.click();
       URL.revokeObjectURL(url);
     } catch (error: any) {
+      captureError("documents.handleDownload", error, { documentId: doc.id });
       toast.error(error.message || "Failed to download document");
     }
   };
@@ -426,6 +614,7 @@ const Documents = () => {
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error: any) {
+      captureError("documents.handleView", error, { documentId: doc.id });
       toast.error(error.message || "Failed to open document");
     }
   };
@@ -452,6 +641,7 @@ const Documents = () => {
       }
       await loadData();
     } catch (error: any) {
+      captureError("documents.handleRequestAccess", error, { documentId: docId });
       toast.error(error.message || "Failed to request access");
     } finally {
       setRequestingDocId(null);
@@ -734,6 +924,15 @@ const Documents = () => {
                         </Button>
                       )}
                       <Button
+                        size="sm"
+                        className={buttonClasses.ghostSm}
+                        startContent={<FiSend />}
+                        isDisabled={!item.hasLocalKey}
+                        onPress={() => openShareModalForDocument(item.doc.id)}
+                      >
+                        Share Key
+                      </Button>
+                      <Button
                         isIconOnly
                         variant="light"
                         size="sm"
@@ -922,6 +1121,12 @@ const Documents = () => {
                   upload. Save the encryption key shown after upload.
                 </p>
               </div>
+              {uploading && (
+                <div className="p-4 bg-gray-900/70 border border-gray-700/70 rounded-2xl space-y-1">
+                  <p className="text-sm font-medium">Upload Status</p>
+                  <p className="text-sm text-gray-300">{uploadStageLabel(uploadStage)}</p>
+                </div>
+              )}
             </div>
           </ModalBody>
           <ModalFooter className="border-t border-gray-800/80 px-4 sm:px-6 py-3 flex-col-reverse sm:flex-row gap-2">
@@ -929,12 +1134,19 @@ const Documents = () => {
               Cancel
             </Button>
             <Button
+              className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
+              onPress={handleAbortUpload}
+              isDisabled={!uploading || !isUploadAbortable}
+            >
+              Abort Upload
+            </Button>
+            <Button
               className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
               onPress={handleUpload}
               isLoading={uploading}
               isDisabled={vaults.length === 0 || !selectedFile || !selectedVaultId || uploading}
             >
-              {uploading ? "Uploading..." : "Upload Document"}
+              {uploading ? uploadStageLabel(uploadStage) : "Upload Document"}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -1002,6 +1214,72 @@ const Documents = () => {
               }}
             >
               Download Backup
+            </Button>
+            <Button
+              className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
+              onPress={() => {
+                if (lastDocumentId) {
+                  openShareModalForDocument(lastDocumentId);
+                }
+              }}
+            >
+              Create Beneficiary Package
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={isShareModalOpen}
+        onClose={resetShareModal}
+        size="md"
+        className="bg-gray-900"
+        scrollBehavior="inside"
+        placement="center"
+      >
+        <ModalContent className="bg-gray-900 w-[92vw] max-w-lg max-h-[80vh] overflow-hidden">
+          <ModalHeader>Share Beneficiary Key Package</ModalHeader>
+          <ModalBody className="max-h-[70vh] overflow-y-auto space-y-3">
+            <p className="text-gray-400 text-sm">
+              Download a wallet-bound key package for the beneficiary. They must request access on-chain and import this package to decrypt.
+            </p>
+            {selectedShareDocument && (
+              <div className="rounded-xl border border-gray-700/70 bg-gray-900/65 p-3 text-sm">
+                <p className="font-medium">{selectedShareDocument.name}</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Vault: {selectedShareDocument.vaultName} • Document #{selectedShareDocument.doc.id}
+                </p>
+              </div>
+            )}
+            <Input
+              label="Beneficiary Wallet Address"
+              placeholder="0x..."
+              value={shareRecipient}
+              onValueChange={setShareRecipient}
+              classNames={{
+                inputWrapper:
+                  "bg-gray-900/75 border border-gray-700/80 shadow-none data-[hover=true]:border-gray-600",
+                input: "text-sm text-gray-100",
+                label: "text-gray-300",
+              }}
+            />
+            <div className="rounded-xl border border-gray-700/70 bg-gray-900/65 p-3 space-y-1">
+              <p className="text-sm font-medium">How beneficiary uses this package</p>
+              <p className="text-xs text-gray-400">1. Receive an NFT pass for the vault.</p>
+              <p className="text-xs text-gray-400">2. Request document access and wait for guardian approvals.</p>
+              <p className="text-xs text-gray-400">3. Import this package using "Import Key Backup".</p>
+            </div>
+          </ModalBody>
+          <ModalFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button className={`${buttonClasses.ghostMd} w-full sm:w-auto`} onPress={resetShareModal}>
+              Cancel
+            </Button>
+            <Button
+              className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
+              onPress={downloadBeneficiaryKeyPackage}
+              isDisabled={!shareTargetDocId || !shareRecipient.trim()}
+            >
+              Download Package
             </Button>
           </ModalFooter>
         </ModalContent>

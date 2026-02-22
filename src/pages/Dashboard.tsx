@@ -20,6 +20,7 @@ import {
   FiAlertCircle,
   FiClock,
   FiCheckCircle,
+  FiCircle,
 } from "react-icons/fi";
 import { Link, useNavigate } from "react-router-dom";
 import { useWeb3 } from "../context/Web3Context";
@@ -34,6 +35,7 @@ import { toast } from "react-hot-toast";
 import { formatDistanceToNow } from "date-fns";
 import { buttonClasses } from "../utils/buttonClasses";
 import { shortenAddress } from "../utils/helpers";
+import { captureError } from "../services/telemetry.service";
 
 const Dashboard = () => {
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
@@ -50,6 +52,7 @@ const Dashboard = () => {
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalData[]>([]);
   const [approvingRequestId, setApprovingRequestId] = useState<number | null>(null);
+  const [packageExported, setPackageExported] = useState(false);
 
   useEffect(() => {
     if (isConnected && provider && isFujiNetwork) {
@@ -59,6 +62,29 @@ const Dashboard = () => {
       setLoading(false);
     }
   }, [account, isConnected, provider, signer, isFujiNetwork]);
+
+  useEffect(() => {
+    const readPackageFlag = () => {
+      if (!account) {
+        setPackageExported(false);
+        return;
+      }
+
+      try {
+        const key = `spoovault-beneficiary-package-exported-${account.toLowerCase()}`;
+        const value = localStorage.getItem(key);
+        setPackageExported(value === "1");
+      } catch {
+        setPackageExported(false);
+      }
+    };
+
+    readPackageFlag();
+    window.addEventListener("spoovault-beneficiary-package-exported", readPackageFlag as EventListener);
+    return () => {
+      window.removeEventListener("spoovault-beneficiary-package-exported", readPackageFlag as EventListener);
+    };
+  }, [account]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -92,6 +118,7 @@ const Dashboard = () => {
       });
     } catch (error) {
       console.error("Error loading dashboard data:", error);
+      captureError("dashboard.loadData", error, { account: account || "" });
       const message = error instanceof Error ? error.message : "Failed to load dashboard data";
       toast.error(message);
     } finally {
@@ -119,6 +146,7 @@ const Dashboard = () => {
       toast.success(`Approved request #${requestId}`);
       await loadDashboardData();
     } catch (error: any) {
+      captureError("dashboard.approveAccess", error, { requestId });
       toast.error(error.message || "Failed to approve request");
     } finally {
       setApprovingRequestId(null);
@@ -137,6 +165,36 @@ const Dashboard = () => {
     const values = Object.values(docCountByVault);
     return values.length > 0 ? Math.max(...values) : 0;
   }, [docCountByVault]);
+
+  const handoverChecklist = useMemo(
+    () => [
+      {
+        key: "vault",
+        done: stats.totalVaults > 0,
+        title: "Create access vault",
+        route: "/vaults",
+      },
+      {
+        key: "document",
+        done: stats.totalDocuments > 0,
+        title: "Upload encrypted document",
+        route: "/documents",
+      },
+      {
+        key: "pass",
+        done: stats.totalNFTs > 0,
+        title: "Mint beneficiary access pass",
+        route: "/nfts",
+      },
+      {
+        key: "package",
+        done: packageExported,
+        title: "Share beneficiary key package",
+        route: "/documents",
+      },
+    ],
+    [stats.totalVaults, stats.totalDocuments, stats.totalNFTs, packageExported]
+  );
 
   if (!isConnected) {
     return (
@@ -297,6 +355,41 @@ const Dashboard = () => {
         )}
       </div>
 
+      <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+        <CardHeader className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FiCheckCircle />
+            <h2 className="text-xl font-semibold">Handover Checklist</h2>
+          </div>
+          <Chip size="sm" variant="flat" color="primary">
+            {handoverChecklist.filter((step) => step.done).length}/{handoverChecklist.length} done
+          </Chip>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          {handoverChecklist.map((step) => (
+            <button
+              key={step.key}
+              type="button"
+              className="w-full rounded-xl border border-gray-800/80 bg-gray-900/50 px-4 py-3 flex items-center justify-between gap-3 hover:border-gray-700/80 transition-colors"
+              onClick={() => navigate(step.route)}
+            >
+              <div className="flex items-center gap-3 text-left">
+                {step.done ? (
+                  <FiCheckCircle className="text-green-400 flex-shrink-0" />
+                ) : (
+                  <FiCircle className="text-gray-500 flex-shrink-0" />
+                )}
+                <span className="text-sm">{step.title}</span>
+              </div>
+              <span className="text-xs text-gray-500">Open</span>
+            </button>
+          ))}
+          <p className="text-xs text-gray-500">
+            Final step is marked done after you export at least one beneficiary key package.
+          </p>
+        </CardBody>
+      </Card>
+
       <div className="grid lg:grid-cols-3 gap-8">
         <Card className="lg:col-span-2 border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
           <CardHeader className="flex items-center justify-between">
@@ -386,6 +479,12 @@ const Dashboard = () => {
                 <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
                   <FiKey className="mr-3" />
                   Mint Beneficiary Pass
+                </Button>
+              </Link>
+              <Link to="/access">
+                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
+                  <FiUsers className="mr-3" />
+                  Open My Access View
                 </Button>
               </Link>
               <Link to="/vaults">

@@ -14,6 +14,7 @@ Enterprise-grade document custody app on Avalanche Fuji with client-side encrypt
 - Access vaults with guardian multi-signature thresholds
 - Release policies for live, emergency, and post-death access
 - ERC-721 access pass minting and revocation
+- Beneficiary `My Access` workflow (request + approval + key-package import)
 - On-chain audit trail via contract events
 
 ## Stack
@@ -35,6 +36,11 @@ npm run dev
 npm run build
 ```
 
+## Smoke Test
+```bash
+npm run test:smoke
+```
+
 ## Environment Variables
 Create `.env` from `.env.example`:
 
@@ -46,6 +52,7 @@ VITE_CHAIN_NAME=Avalanche Fuji Testnet
 VITE_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
 VITE_CONTRACT_DEPLOY_BLOCK=51988771
 VITE_TX_WAIT_TIMEOUT_MS=180000
+VITE_TELEMETRY_WEBHOOK=
 
 # Pinata (set either JWT or key/secret)
 VITE_PINATA_JWT=
@@ -71,6 +78,13 @@ firebase deploy --only hosting
 - Read calls are routed through stable Fuji RPC fallbacks.
 - Upload flow includes IPFS timeout handling and clearer errors.
 - Transaction confirmation wait has a configurable timeout.
+- Upload modal now shows stage-by-stage status and supports abort before on-chain submission.
+- End-to-end manual checklist: `docs/e2e-manual-checklist.md`.
+
+## Security Notes
+- Rotate Pinata credentials immediately if they were ever exposed.
+- Use scoped JWT credentials and avoid broad API secrets in production.
+- Beneficiary key packages are wallet-bound and validated on import.
 
 ## License
 MIT

@@ -16,6 +16,7 @@ import {
   FiMoreHorizontal,
   FiChevronLeft,
   FiChevronRight,
+  FiUnlock,
 } from "react-icons/fi";
 import { useWeb3 } from "../context/Web3Context";
 import { shortenAddress } from "../utils/helpers";
@@ -83,6 +84,7 @@ const AppLayout = () => {
     { path: "/dashboard", label: "Dashboard", icon: FiHome },
     { path: "/vaults", label: "Access Vaults", icon: FiShield },
     { path: "/documents", label: "Documents", icon: FiFile },
+    { path: "/access", label: "My Access", icon: FiUnlock },
     { path: "/nfts", label: "Access Passes", icon: FiKey },
     { path: "/profile", label: "Profile", icon: FiUser },
   ];
@@ -121,6 +123,12 @@ const AppLayout = () => {
         label: "Profile",
         tone: "default",
         onClick: () => navigate("/profile"),
+      },
+      {
+        key: "access",
+        label: "My Access",
+        tone: "default",
+        onClick: () => navigate("/access"),
       },
       {
         key: "copy",
