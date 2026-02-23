@@ -49,6 +49,28 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
 
   const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
   const FUJI_CHAIN_ID = 43113;
+  const isMobileDevice = (): boolean => {
+    if (typeof navigator === "undefined") return false;
+    return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(
+      navigator.userAgent
+    );
+  };
+
+  const getMetaMaskDeepLink = (): string => {
+    if (typeof window === "undefined") return "https://metamask.app.link/";
+    const dappUrl = `${window.location.host}${window.location.pathname}${window.location.search}${window.location.hash}`;
+    return `https://metamask.app.link/dapp/${dappUrl}`;
+  };
+
+  const openWalletAppOrInstall = () => {
+    if (isMobileDevice()) {
+      const deepLink = getMetaMaskDeepLink();
+      toast("Opening wallet app...");
+      window.location.href = deepLink;
+      return;
+    }
+    window.open("https://metamask.io/download/", "_blank");
+  };
 
   const initContract = useCallback((signerOrProvider: ethers.Signer | ethers.Provider) => {
     if (!CONTRACT_ADDRESS) {
@@ -126,8 +148,8 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
 
   const connect = async () => {
     if (typeof window.ethereum === "undefined") {
-      toast.error("Please install MetaMask!");
-      window.open("https://metamask.io/download/", "_blank");
+      toast.error("Wallet not detected in browser");
+      openWalletAppOrInstall();
       return;
     }
 
@@ -178,7 +200,8 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
 
   const switchToFuji = async () => {
     if (!window.ethereum) {
-      toast.error("MetaMask not installed");
+      toast.error("Wallet not detected in browser");
+      openWalletAppOrInstall();
       return;
     }
 
