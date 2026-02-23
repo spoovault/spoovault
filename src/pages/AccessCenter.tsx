@@ -96,6 +96,11 @@ const AccessCenter = () => {
 
   const loadData = async () => {
     if (!account) {
+      setVaults([]);
+      setDocuments([]);
+      setTokens([]);
+      setActiveAccessByDoc({});
+      setLatestRequestByDoc({});
       setLoading(false);
       return;
     }
@@ -108,14 +113,32 @@ const AccessCenter = () => {
         contractService.fetchUserTokens(account),
       ]);
 
-      const docIds = docsData.map((doc) => doc.id);
+      const accountLower = account.toLowerCase();
+      const tokenVaultIds = new Set<number>(
+        tokenData
+          .map((token) => token.vaultId)
+          .filter((vaultId): vaultId is number => vaultId !== null)
+      );
+
+      const visibleVaults = vaultsData.filter((vault) => {
+        const isCreator = vault.creator.toLowerCase() === accountLower;
+        const isGuardian = vault.guardians.some(
+          (guardian) => guardian.toLowerCase() === accountLower
+        );
+        const hasVaultPass = tokenVaultIds.has(vault.id);
+        return isCreator || isGuardian || hasVaultPass;
+      });
+
+      const visibleVaultIds = new Set<number>(visibleVaults.map((vault) => vault.id));
+      const scopedDocs = docsData.filter((doc) => visibleVaultIds.has(doc.vaultId));
+      const docIds = scopedDocs.map((doc) => doc.id);
       const [accessMap, requestMap] = await Promise.all([
         contractService.getActiveAccessMap(account, docIds),
         contractService.getLatestRequestsForUser(account, docIds),
       ]);
 
-      setVaults(vaultsData);
-      setDocuments(docsData);
+      setVaults(visibleVaults);
+      setDocuments(scopedDocs);
       setTokens(tokenData);
       setActiveAccessByDoc(accessMap);
       setLatestRequestByDoc(requestMap);

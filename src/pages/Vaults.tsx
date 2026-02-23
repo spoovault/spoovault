@@ -88,28 +88,53 @@ const Vaults = () => {
   }, [account, isConnected, provider, signer, isFujiNetwork]);
 
   const loadVaults = async (options?: { silent?: boolean }) => {
+    if (!account) {
+      setLoading(false);
+      return;
+    }
+
     if (!options?.silent) {
       setLoading(true);
     }
     try {
-      const [vaultsData, docsData] = await Promise.all([
+      const [vaultsData, docsData, userTokens] = await Promise.all([
         contractService.fetchVaults(),
         contractService.fetchDocuments(),
+        contractService.fetchUserTokens(account),
       ]);
 
-      const docCounts: Record<number, number> = {};
-      docsData.forEach((doc: DocumentData) => {
-        docCounts[doc.vaultId] = (docCounts[doc.vaultId] || 0) + 1;
+      const accountLower = account.toLowerCase();
+      const tokenVaultIds = new Set<number>(
+        userTokens
+          .map((token) => token.vaultId)
+          .filter((vaultId): vaultId is number => vaultId !== null)
+      );
+
+      const visibleVaults = vaultsData.filter((vault) => {
+        const isCreator = vault.creator.toLowerCase() === accountLower;
+        const isGuardian = vault.guardians.some(
+          (guardian) => guardian.toLowerCase() === accountLower
+        );
+        const hasVaultPass = tokenVaultIds.has(vault.id);
+        return isCreator || isGuardian || hasVaultPass;
       });
 
-      const enriched = vaultsData.map((vault) => ({
+      const visibleVaultSet = new Set<number>(visibleVaults.map((vault) => vault.id));
+      const docCounts: Record<number, number> = {};
+      docsData.forEach((doc: DocumentData) => {
+        if (visibleVaultSet.has(doc.vaultId)) {
+          docCounts[doc.vaultId] = (docCounts[doc.vaultId] || 0) + 1;
+        }
+      });
+
+      const enriched = visibleVaults.map((vault) => ({
         ...vault,
         documentCount: docCounts[vault.id] || 0,
       }));
 
       setVaults(enriched);
       const releaseStates = await contractService.fetchVaultReleaseStates(
-        vaultsData.map((vault) => vault.id)
+        visibleVaults.map((vault) => vault.id)
       );
       setReleaseStatesByVault(releaseStates);
     } catch (error) {

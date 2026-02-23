@@ -36,6 +36,7 @@ const AvalancheLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
 const LandingPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeNav, setActiveNav] = useState("#hero");
+  const [showSplash, setShowSplash] = useState(true);
 
   const navItems = [
     { label: "Overview", href: "#hero" },
@@ -110,6 +111,14 @@ const LandingPage = () => {
     "h-9 px-4 rounded-full text-[13px] sm:text-[14px] font-semibold transition-all duration-300 inline-flex items-center";
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setShowSplash(false);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const sectionIds = ["hero", "features", "workflow", "security"];
     const sections = sectionIds
       .map((id) => document.getElementById(id))
@@ -152,6 +161,31 @@ const LandingPage = () => {
       window.removeEventListener("hashchange", setFromHash);
     };
   }, []);
+
+  if (showSplash) {
+    return (
+      <div className="landing-splash min-h-screen w-full max-w-[100vw] overflow-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
+        <div className="landing-splash__bg">
+          <div className="landing-splash__blur landing-splash__blur--top" />
+          <div className="landing-splash__blur landing-splash__blur--left" />
+          <div className="landing-splash__blur landing-splash__blur--right" />
+        </div>
+
+        <div className="landing-splash__content">
+          <div className="landing-splash__orbit">
+            <div className="landing-splash__ring landing-splash__ring--outer" />
+            <div className="landing-splash__ring landing-splash__ring--mid" />
+            <div className="landing-splash__ring landing-splash__ring--inner" />
+            <div className="landing-splash__logo-shell">
+              <AvalancheLogo className="landing-splash__logo" />
+            </div>
+          </div>
+          <h1 className="landing-splash__title">SpooVault</h1>
+          <p className="landing-splash__subtitle">Loading secure access on Avalanche</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="landing-page min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">

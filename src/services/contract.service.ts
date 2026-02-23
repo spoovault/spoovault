@@ -266,6 +266,146 @@ const getLogChunkSize = (): number => {
   return 2000;
 };
 
+const EVENT_LOG_CACHE_PREFIX = "spoovault-event-log-cache";
+const EVENT_LOG_CACHE_VERSION = 1;
+
+type ParsedLogEntry = { log: ethers.Log; parsed: ethers.LogDescription };
+
+interface EventLogCacheRecord {
+  address: string;
+  blockHash: string;
+  blockNumber: number;
+  data: string;
+  index: number;
+  removed: boolean;
+  topics: string[];
+  transactionHash: string;
+  transactionIndex: number;
+}
+
+interface EventLogCachePayload {
+  version: number;
+  chainId: number;
+  contractAddress: string;
+  eventName: string;
+  lastSyncedBlock: number;
+  logs: EventLogCacheRecord[];
+}
+
+interface EventLogQueryOptions {
+  tail?: number;
+}
+
+const getConfiguredChainId = (): number => {
+  const configured = Number(import.meta.env.VITE_CHAIN_ID);
+  if (!Number.isNaN(configured) && configured > 0) {
+    return configured;
+  }
+  return 0;
+};
+
+const getEventLogCacheKey = (eventName: string, contractAddress: string): string => {
+  return [
+    EVENT_LOG_CACHE_PREFIX,
+    EVENT_LOG_CACHE_VERSION,
+    getConfiguredChainId(),
+    contractAddress.toLowerCase(),
+    eventName,
+  ].join(":");
+};
+
+const readEventLogCache = (
+  eventName: string,
+  contractAddress: string
+): EventLogCachePayload | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(getEventLogCacheKey(eventName, contractAddress));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as EventLogCachePayload;
+    if (
+      !parsed ||
+      parsed.version !== EVENT_LOG_CACHE_VERSION ||
+      parsed.chainId !== getConfiguredChainId() ||
+      parsed.contractAddress.toLowerCase() !== contractAddress.toLowerCase() ||
+      parsed.eventName !== eventName ||
+      !Array.isArray(parsed.logs)
+    ) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeEventLogCache = (
+  eventName: string,
+  contractAddress: string,
+  payload: Omit<EventLogCachePayload, "version" | "chainId" | "contractAddress" | "eventName">
+): void => {
+  if (typeof window === "undefined") return;
+  try {
+    const value: EventLogCachePayload = {
+      version: EVENT_LOG_CACHE_VERSION,
+      chainId: getConfiguredChainId(),
+      contractAddress: contractAddress.toLowerCase(),
+      eventName,
+      ...payload,
+    };
+    window.localStorage.setItem(
+      getEventLogCacheKey(eventName, contractAddress),
+      JSON.stringify(value)
+    );
+  } catch {
+    // ignore storage write errors
+  }
+};
+
+const toCacheRecord = (log: ethers.Log): EventLogCacheRecord => ({
+  address: String(log.address ?? ""),
+  blockHash: String(log.blockHash ?? ""),
+  blockNumber: Number(log.blockNumber ?? 0),
+  data: String(log.data ?? "0x"),
+  index: Number((log as any).index ?? 0),
+  removed: Boolean(log.removed ?? false),
+  topics: Array.isArray(log.topics) ? [...log.topics] : [],
+  transactionHash: String(log.transactionHash ?? ""),
+  transactionIndex: Number(log.transactionIndex ?? 0),
+});
+
+const fromCacheRecord = (record: EventLogCacheRecord): ethers.Log =>
+  ({
+    address: record.address,
+    blockHash: record.blockHash,
+    blockNumber: record.blockNumber,
+    data: record.data,
+    index: record.index,
+    removed: record.removed,
+    topics: record.topics,
+    transactionHash: record.transactionHash,
+    transactionIndex: record.transactionIndex,
+  } as unknown as ethers.Log);
+
+const sortLogsAscending = (logs: ethers.Log[]): ethers.Log[] => {
+  return [...logs].sort((a, b) => {
+    if (a.blockNumber !== b.blockNumber) {
+      return a.blockNumber - b.blockNumber;
+    }
+    return (a.index ?? 0) - (b.index ?? 0);
+  });
+};
+
+const getPendingRequestScanDepth = (): number => {
+  const configured = Number(import.meta.env.VITE_PENDING_REQUEST_SCAN_DEPTH);
+  if (!Number.isNaN(configured) && configured > 0) {
+    return configured;
+  }
+  return 300;
+};
+
 const getFromBlock = async (): Promise<number> => {
   const configured = Number(import.meta.env.VITE_CONTRACT_DEPLOY_BLOCK);
   if (!Number.isNaN(configured) && configured > 0) {
@@ -285,7 +425,10 @@ const getFromBlock = async (): Promise<number> => {
   throw new Error(lastError || "Failed to determine fromBlock");
 };
 
-const getEventLogs = async (eventName: string) => {
+const getEventLogs = async (
+  eventName: string,
+  options?: EventLogQueryOptions
+): Promise<ParsedLogEntry[]> => {
   const address = getContractAddress();
   const iface = getInterface();
   const event = iface.getEvent(eventName);
@@ -294,17 +437,29 @@ const getEventLogs = async (eventName: string) => {
   }
   const topics = iface.encodeFilterTopics(event, []);
   let logs: ethers.Log[] = [];
+  const fromBlock = await getFromBlock();
+  const cached = readEventLogCache(eventName, address);
+  const cachedLogs = cached
+    ? cached.logs.map(fromCacheRecord).filter((log) => log.blockNumber >= fromBlock)
+    : [];
   let lastError: string | null = null;
 
   for (const activeProvider of getReadProviders()) {
     try {
-      const fromBlock = await getFromBlock();
       const toBlock = await activeProvider.getBlockNumber();
       const startBlock = Math.min(fromBlock, toBlock);
       const chunkSize = getLogChunkSize();
-      logs = [];
+      const canUseCache =
+        !!cached &&
+        cached.lastSyncedBlock >= startBlock &&
+        cached.lastSyncedBlock <= toBlock &&
+        cachedLogs.length > 0;
+      logs = canUseCache ? [...cachedLogs] : [];
+      const incrementalStart = canUseCache
+        ? Math.max(startBlock, cached!.lastSyncedBlock + 1)
+        : startBlock;
 
-      for (let current = startBlock; current <= toBlock; current += chunkSize) {
+      for (let current = incrementalStart; current <= toBlock; current += chunkSize) {
         const end = Math.min(current + chunkSize - 1, toBlock);
         const chunk = await activeProvider.getLogs({
           address,
@@ -314,6 +469,11 @@ const getEventLogs = async (eventName: string) => {
         });
         logs.push(...chunk);
       }
+      logs = sortLogsAscending(logs);
+      writeEventLogCache(eventName, address, {
+        lastSyncedBlock: toBlock,
+        logs: logs.map(toCacheRecord),
+      });
       lastError = null;
       break;
     } catch (error: any) {
@@ -322,11 +482,20 @@ const getEventLogs = async (eventName: string) => {
   }
 
   if (lastError) {
-    const hint = "Log query failed. Set VITE_CONTRACT_DEPLOY_BLOCK to the contract deploy block.";
-    throw new Error(`[${eventName}] ${hint} ${lastError}`);
+    if (cachedLogs.length > 0) {
+      logs = sortLogsAscending(cachedLogs);
+      lastError = null;
+    } else {
+      const hint = "Log query failed. Set VITE_CONTRACT_DEPLOY_BLOCK to the contract deploy block.";
+      throw new Error(`[${eventName}] ${hint} ${lastError}`);
+    }
   }
 
-  const parsedLogs = logs
+  const effectiveTail = options?.tail && options.tail > 0 ? options.tail : 0;
+  const logsForParsing =
+    effectiveTail > 0 && logs.length > effectiveTail ? logs.slice(-effectiveTail) : logs;
+
+  const parsedLogs = logsForParsing
     .map((log) => {
       const parsed = iface.parseLog(log);
       if (!parsed) return null;
@@ -833,7 +1002,9 @@ const fetchPendingApprovalsForGuardian = async (
 
   await ensureContractDeployed();
   const contract = ensureReadContract();
-  const requestLogs = await getEventLogs("AccessRequested");
+  const requestLogs = await getEventLogs("AccessRequested", {
+    tail: getPendingRequestScanDepth(),
+  });
 
   const sortedLogs = [...requestLogs].sort((a, b) => {
     if (a.log.blockNumber !== b.log.blockNumber) {
@@ -969,11 +1140,12 @@ const fetchUserTokens = async (account: string): Promise<TokenData[]> => {
 const getRecentActivity = async (limit = 5): Promise<ActivityEvent[]> => {
   await ensureContractDeployed();
   const contract = ensureReadContract();
+  const perEventTail = Math.max(limit * 6, 40);
   const [vaultLogs, documentLogs, requestLogs, nftLogs] = await Promise.all([
-    getEventLogs("VaultCreated"),
-    getEventLogs("DocumentAdded"),
-    getEventLogs("AccessRequested"),
-    getEventLogs("NFTMinted"),
+    getEventLogs("VaultCreated", { tail: perEventTail }),
+    getEventLogs("DocumentAdded", { tail: perEventTail }),
+    getEventLogs("AccessRequested", { tail: perEventTail }),
+    getEventLogs("NFTMinted", { tail: perEventTail }),
   ]);
 
   const allLogs = [

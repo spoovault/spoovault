@@ -107,6 +107,50 @@ button:active:not(:disabled),
   box-shadow: 0 8px 18px -14px rgba(143, 22, 22, 0.75);
 }
 
+/* Global dark form controls */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  background-color: rgba(17, 24, 39, 0.78);
+  color: #f3f4f6;
+  border-color: rgba(75, 85, 99, 0.75);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"])::placeholder,
+textarea::placeholder {
+  color: rgba(156, 163, 175, 0.95);
+}
+
+select option {
+  background-color: #0b1220;
+  color: #f3f4f6;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f3f4f6;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(17, 24, 39, 0.96) inset;
+  box-shadow: 0 0 0px 1000px rgba(17, 24, 39, 0.96) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
+input[type="file"]::file-selector-button {
+  background: rgba(31, 41, 55, 0.95);
+  color: #f3f4f6;
+  border: 1px solid rgba(75, 85, 99, 0.75);
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: rgba(55, 65, 81, 0.95);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
@@ -227,6 +271,162 @@ button:active:not(:disabled),
     top: 0%;
     transform: translate(-50%, -50%) rotate(360deg);
   }
+}
+
+@keyframes avax-loader-ring-spin {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes avax-loader-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.07);
+    opacity: 1;
+  }
+}
+
+@keyframes avax-loader-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.landing-splash {
+  position: relative;
+}
+
+.landing-splash__bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.landing-splash__blur {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(56px);
+  animation: avax-loader-breathe 2.8s ease-in-out infinite;
+}
+
+.landing-splash__blur--top {
+  width: 17rem;
+  height: 17rem;
+  top: 7%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(228, 65, 66, 0.14);
+}
+
+.landing-splash__blur--left {
+  width: 14rem;
+  height: 14rem;
+  left: -3rem;
+  bottom: 9rem;
+  background: rgba(178, 38, 52, 0.15);
+}
+
+.landing-splash__blur--right {
+  width: 12rem;
+  height: 12rem;
+  right: -2rem;
+  top: 42%;
+  background: rgba(148, 20, 32, 0.15);
+}
+
+.landing-splash__content {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.landing-splash__orbit {
+  position: relative;
+  width: 9.75rem;
+  height: 9.75rem;
+  display: grid;
+  place-items: center;
+}
+
+.landing-splash__ring {
+  position: absolute;
+  border-radius: 9999px;
+  border-style: solid;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+.landing-splash__ring--outer {
+  inset: 0;
+  border-width: 1px;
+  border-top-color: rgba(244, 173, 84, 0.88);
+  border-right-color: rgba(228, 65, 66, 0.56);
+  animation: avax-loader-ring-spin 2.3s linear infinite;
+}
+
+.landing-splash__ring--mid {
+  inset: 0.55rem;
+  border-width: 1px;
+  border-top-color: rgba(230, 106, 75, 0.86);
+  border-left-color: rgba(255, 219, 172, 0.42);
+  animation: avax-loader-ring-spin 1.8s linear infinite reverse;
+}
+
+.landing-splash__ring--inner {
+  inset: 1.28rem;
+  border-width: 1px;
+  border-top-color: rgba(255, 231, 189, 0.74);
+  border-bottom-color: rgba(201, 54, 66, 0.65);
+  animation: avax-loader-ring-spin 1.5s linear infinite;
+}
+
+.landing-splash__logo-shell {
+  width: 4.15rem;
+  height: 4.15rem;
+  border-radius: 1.1rem;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.2), rgba(228, 65, 66, 0.1) 44%, rgba(9, 9, 13, 0.82) 100%);
+  border: 1px solid rgba(233, 120, 108, 0.38);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 20px 36px -24px rgba(228, 65, 66, 0.62);
+  animation: avax-loader-pulse 1.8s ease-in-out infinite;
+}
+
+.landing-splash__logo {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.landing-splash__title {
+  margin-top: 1.2rem;
+  font-size: clamp(1.65rem, 4.4vw, 2.15rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.landing-splash__subtitle {
+  margin-top: 0.4rem;
+  color: rgba(209, 213, 219, 0.82);
+  font-size: 0.91rem;
+  letter-spacing: 0.01em;
 }
 
 .float {

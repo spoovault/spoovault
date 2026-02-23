@@ -27,9 +27,30 @@ import {
   VaultData,
 } from "../services/contract.service";
 import { toast } from "react-hot-toast";
-import { formatDate, isValidAddress, shortenAddress } from "../utils/helpers";
+import { formatDate, getIPFSURL, isValidAddress, shortenAddress } from "../utils/helpers";
 import { buttonClasses } from "../utils/buttonClasses";
 import { captureError } from "../services/telemetry.service";
+
+const getExplorerBaseUrl = (): string => {
+  const chainId = Number(import.meta.env.VITE_CHAIN_ID);
+  return chainId === 43113 ? "https://testnet.snowtrace.io" : "https://snowtrace.io";
+};
+
+const buildDefaultTokenURI = (vaultId: number, recipient: string): string => {
+  const metadata = {
+    name: `SpooVault Access Pass - Vault #${vaultId}`,
+    description:
+      "Guardian-issued access pass for protected SpooVault documents.",
+    attributes: [
+      { trait_type: "Vault ID", value: vaultId },
+      { trait_type: "Recipient", value: recipient.toLowerCase() },
+      { trait_type: "Network", value: "Avalanche" },
+    ],
+  };
+
+  const encoded = btoa(JSON.stringify(metadata));
+  return `data:application/json;base64,${encoded}`;
+};
 
 const NFTGallery = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -59,12 +80,21 @@ const NFTGallery = () => {
       contractService.initialize(provider, signer);
       loadTokens();
     } else {
+      setTokens([]);
+      setVaults([]);
+      setTotalSupply(0);
       setLoading(false);
     }
-  }, [isConnected, provider, signer, isFujiNetwork]);
+  }, [account, isConnected, provider, signer, isFujiNetwork]);
 
   const loadTokens = async () => {
-    if (!account) return;
+    if (!account) {
+      setTokens([]);
+      setVaults([]);
+      setTotalSupply(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [tokenData, vaultData, supply] = await Promise.all([
@@ -72,8 +102,24 @@ const NFTGallery = () => {
         contractService.fetchVaults(),
         contractService.getTotalSupply(),
       ]);
+
+      const accountLower = account.toLowerCase();
+      const tokenVaultIds = new Set<number>(
+        tokenData
+          .map((token) => token.vaultId)
+          .filter((vaultId): vaultId is number => vaultId !== null)
+      );
+      const visibleVaults = vaultData.filter((vault) => {
+        const isCreator = vault.creator.toLowerCase() === accountLower;
+        const isGuardian = vault.guardians.some(
+          (guardian) => guardian.toLowerCase() === accountLower
+        );
+        const hasVaultPass = tokenVaultIds.has(vault.id);
+        return isCreator || isGuardian || hasVaultPass;
+      });
+
       setTokens(tokenData);
-      setVaults(vaultData);
+      setVaults(visibleVaults);
       setTotalSupply(supply);
     } catch (error) {
       console.error("Error loading tokens:", error);
@@ -118,10 +164,11 @@ const NFTGallery = () => {
 
     setMinting(true);
     try {
+      const tokenURIValue = form.tokenURI.trim() || buildDefaultTokenURI(vaultId, form.recipient);
       const tokenId = await contractService.mintAccessToken(
         vaultId,
         form.recipient,
-        form.tokenURI || ""
+        tokenURIValue
       );
 
       if (!tokenId) {
@@ -139,6 +186,25 @@ const NFTGallery = () => {
     } finally {
       setMinting(false);
     }
+  };
+
+  const handleViewToken = (token: TokenData) => {
+    const rawUri = token.tokenURI?.trim() || "";
+    if (rawUri) {
+      const resolvedUri = rawUri.startsWith("ipfs://") ? getIPFSURL(rawUri) : rawUri;
+      window.open(resolvedUri, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined;
+    if (!contractAddress) {
+      toast.error("Token URI is empty and contract address is not configured.");
+      return;
+    }
+
+    const explorerUrl = `${getExplorerBaseUrl()}/token/${contractAddress}?a=${token.tokenId}`;
+    window.open(explorerUrl, "_blank", "noopener,noreferrer");
+    toast("No token URI set. Opened token on explorer.");
   };
 
   const handleBurn = async (tokenId: number) => {
@@ -340,13 +406,7 @@ const NFTGallery = () => {
                       fullWidth
                       variant="flat"
                       startContent={<FiEye />}
-                      onPress={() => {
-                        if (token.tokenURI) {
-                          window.open(token.tokenURI, "_blank");
-                        } else {
-                          toast.error("No token URI set");
-                        }
-                      }}
+                      onPress={() => handleViewToken(token)}
                     >
                       View
                     </Button>

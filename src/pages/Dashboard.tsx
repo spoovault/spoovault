@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Card,
   CardBody,
@@ -22,7 +22,7 @@ import {
   FiCheckCircle,
   FiCircle,
 } from "react-icons/fi";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useWeb3 } from "../context/Web3Context";
 import {
   contractService,
@@ -37,13 +37,39 @@ import { buttonClasses } from "../utils/buttonClasses";
 import { shortenAddress } from "../utils/helpers";
 import { captureError } from "../services/telemetry.service";
 
+const DASHBOARD_CACHE_PREFIX = "spoovault-dashboard-cache";
+const DASHBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+
+interface DashboardCachePayload {
+  account: string;
+  cachedAt: number;
+  vaults: VaultData[];
+  stats: {
+    totalVaults: number;
+    totalDocuments: number;
+    totalGuardians: number;
+    totalNFTs: number;
+  };
+  pendingApprovals: PendingApprovalData[];
+}
+
+interface DashboardStats {
+  totalVaults: number;
+  totalDocuments: number;
+  totalGuardians: number;
+  totalNFTs: number;
+}
+
 const Dashboard = () => {
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
   const navigate = useNavigate();
+  const location = useLocation();
+  const loadVersionRef = useRef(0);
   const [loading, setLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [vaults, setVaults] = useState<VaultData[]>([]);
   const [documents, setDocuments] = useState<DocumentData[]>([]);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<DashboardStats>({
     totalVaults: 0,
     totalDocuments: 0,
     totalGuardians: 0,
@@ -57,8 +83,25 @@ const Dashboard = () => {
   useEffect(() => {
     if (isConnected && provider && isFujiNetwork) {
       contractService.initialize(provider, signer ?? undefined);
-      loadDashboardData();
+      const hydrated = hydrateDashboardCache(account || "");
+      if (hydrated) {
+        void loadDashboardData({ silent: true });
+      } else {
+        void loadDashboardData();
+      }
     } else {
+      loadVersionRef.current += 1;
+      setVaults([]);
+      setDocuments([]);
+      setRecentActivity([]);
+      setPendingApprovals([]);
+      setStats({
+        totalVaults: 0,
+        totalDocuments: 0,
+        totalGuardians: 0,
+        totalNFTs: 0,
+      });
+      setActivityLoading(false);
       setLoading(false);
     }
   }, [account, isConnected, provider, signer, isFujiNetwork]);
@@ -86,43 +129,276 @@ const Dashboard = () => {
     };
   }, [account]);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    if (location.hash !== "#approval-queue") {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const element = document.getElementById("approval-queue");
+      element?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [location.hash, pendingApprovals.length, loading]);
+
+  const getDashboardCacheKey = (wallet: string): string =>
+    `${DASHBOARD_CACHE_PREFIX}-${wallet.toLowerCase()}`;
+
+  const readDashboardCache = (
+    wallet: string
+  ): Omit<DashboardCachePayload, "account" | "cachedAt"> | null => {
+    if (!wallet) return null;
     try {
-      const [vaultsData, docsData, totalNFTs, activity] = await Promise.all([
+      const raw = localStorage.getItem(getDashboardCacheKey(wallet));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as DashboardCachePayload;
+      if (!parsed || parsed.account.toLowerCase() !== wallet.toLowerCase()) {
+        return null;
+      }
+      return {
+        vaults: parsed.vaults,
+        stats: parsed.stats,
+        pendingApprovals: parsed.pendingApprovals,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const hydrateDashboardCache = (wallet: string): boolean => {
+    if (!wallet) return false;
+    try {
+      const raw = localStorage.getItem(getDashboardCacheKey(wallet));
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as DashboardCachePayload;
+      if (
+        !parsed ||
+        parsed.account.toLowerCase() !== wallet.toLowerCase() ||
+        Date.now() - parsed.cachedAt > DASHBOARD_CACHE_MAX_AGE_MS
+      ) {
+        return false;
+      }
+      setVaults(parsed.vaults);
+      setStats(parsed.stats);
+      setPendingApprovals(parsed.pendingApprovals);
+      setLoading(false);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const writeDashboardCache = (
+    wallet: string,
+    payload: Omit<DashboardCachePayload, "account" | "cachedAt">
+  ) => {
+    if (!wallet) return;
+    try {
+      const value: DashboardCachePayload = {
+        account: wallet,
+        cachedAt: Date.now(),
+        ...payload,
+      };
+      localStorage.setItem(getDashboardCacheKey(wallet), JSON.stringify(value));
+    } catch {
+      // ignore cache write errors
+    }
+  };
+
+  const loadPendingApprovals = async (
+    wallet: string,
+    userVaults: VaultData[],
+    fallbackStats: DashboardStats,
+    loadVersion: number
+  ) => {
+    if (!wallet) {
+      if (loadVersionRef.current === loadVersion) {
+        setPendingApprovals([]);
+      }
+      return;
+    }
+
+    const walletLower = wallet.toLowerCase();
+    const canActAsGuardian = userVaults.some((vault) =>
+      vault.guardians.some((guardian) => guardian.toLowerCase() === walletLower)
+    );
+    if (!canActAsGuardian) {
+      if (loadVersionRef.current === loadVersion) {
+        setPendingApprovals([]);
+      }
+      return;
+    }
+
+    try {
+      const approvals = await contractService.fetchPendingApprovalsForGuardian(wallet, 5);
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+      const visibleVaultIds = new Set<number>(userVaults.map((vault) => vault.id));
+      const scopedApprovals = approvals.filter((approval) =>
+        visibleVaultIds.has(approval.vaultId)
+      );
+      setPendingApprovals(scopedApprovals);
+
+      const cached = readDashboardCache(wallet);
+      writeDashboardCache(wallet, {
+        vaults: cached?.vaults ?? userVaults,
+        stats: cached?.stats ?? fallbackStats,
+        pendingApprovals: scopedApprovals,
+      });
+    } catch (error) {
+      captureError("dashboard.loadPendingApprovals", error, { account: wallet });
+      if (loadVersionRef.current === loadVersion) {
+        setPendingApprovals([]);
+      }
+    }
+  };
+
+  const loadRecentActivity = async (wallet: string, loadVersion: number) => {
+    if (!wallet) {
+      if (loadVersionRef.current === loadVersion) {
+        setRecentActivity([]);
+      }
+      return;
+    }
+
+    if (loadVersionRef.current === loadVersion) {
+      setActivityLoading(true);
+    }
+    try {
+      const activity = await contractService.getRecentActivity(10);
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+      const accountLower = wallet.toLowerCase();
+      const userActivity = activity
+        .filter((item) => item.actor.toLowerCase() === accountLower)
+        .slice(0, 5);
+      setRecentActivity(userActivity);
+    } catch (error) {
+      captureError("dashboard.loadRecentActivity", error, { account: wallet });
+      if (loadVersionRef.current === loadVersion) {
+        setRecentActivity([]);
+      }
+    } finally {
+      if (loadVersionRef.current === loadVersion) {
+        setActivityLoading(false);
+      }
+    }
+  };
+
+  const loadDocumentsForUserVaults = async (
+    wallet: string,
+    userVaults: VaultData[],
+    fallbackStats: DashboardStats,
+    fallbackApprovals: PendingApprovalData[],
+    loadVersion: number
+  ) => {
+    try {
+      const docsData = await contractService.fetchDocuments();
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+      const userVaultIdSet = new Set<number>(userVaults.map((vault) => vault.id));
+      const userDocuments = docsData.filter((doc) => userVaultIdSet.has(doc.vaultId));
+      setDocuments(userDocuments);
+      setStats((prev) => ({
+        ...prev,
+        totalDocuments: userDocuments.length,
+      }));
+      const cached = readDashboardCache(wallet);
+      writeDashboardCache(wallet, {
+        vaults: userVaults,
+        stats: {
+          ...(cached?.stats ?? fallbackStats),
+          totalDocuments: userDocuments.length,
+        },
+        pendingApprovals: cached?.pendingApprovals ?? fallbackApprovals,
+      });
+    } catch (error) {
+      captureError("dashboard.loadDocuments", error, { account: wallet });
+      if (loadVersionRef.current === loadVersion) {
+        setDocuments([]);
+      }
+    }
+  };
+
+  const loadDashboardData = async (options?: { silent?: boolean }) => {
+    if (!account) {
+      setLoading(false);
+      return;
+    }
+
+    if (!options?.silent) {
+      setLoading(true);
+    }
+    const loadVersion = ++loadVersionRef.current;
+    try {
+      const [vaultsData, userTokens] = await Promise.all([
         contractService.fetchVaults(),
-        contractService.fetchDocuments(),
-        contractService.getTotalSupply(),
-        contractService.getRecentActivity(5),
+        contractService.fetchUserTokens(account),
       ]);
-      const approvals = account
-        ? await contractService.fetchPendingApprovalsForGuardian(account, 5)
-        : [];
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+
+      const accountLower = account.toLowerCase();
+      const tokenVaultIds = new Set<number>(
+        userTokens
+          .map((token) => token.vaultId)
+          .filter((vaultId): vaultId is number => vaultId !== null)
+      );
+
+      const userVaults = vaultsData.filter((vault) => {
+        const isCreator = vault.creator.toLowerCase() === accountLower;
+        const isGuardian = vault.guardians.some(
+          (guardian) => guardian.toLowerCase() === accountLower
+        );
+        const hasVaultPass = tokenVaultIds.has(vault.id);
+        return isCreator || isGuardian || hasVaultPass;
+      });
 
       const guardianSet = new Set<string>();
-      vaultsData.forEach((vault) => {
+      userVaults.forEach((vault) => {
         vault.guardians.forEach((guardian) => {
           guardianSet.add(guardian.toLowerCase());
         });
       });
 
-      setVaults(vaultsData);
-      setDocuments(docsData);
-      setRecentActivity(activity);
-      setPendingApprovals(approvals);
-      setStats({
-        totalVaults: vaultsData.length,
-        totalDocuments: docsData.length,
+      const baseStats: DashboardStats = {
+        totalVaults: userVaults.length,
+        totalDocuments: 0,
         totalGuardians: guardianSet.size,
-        totalNFTs,
+        totalNFTs: userTokens.length,
+      };
+
+      setVaults(userVaults);
+      setDocuments([]);
+      setRecentActivity([]);
+      setPendingApprovals([]);
+      setStats(baseStats);
+
+      writeDashboardCache(account, {
+        vaults: userVaults,
+        stats: baseStats,
+        pendingApprovals: [],
       });
+
+      void loadDocumentsForUserVaults(account, userVaults, baseStats, [], loadVersion);
+      window.setTimeout(() => {
+        void loadPendingApprovals(account, userVaults, baseStats, loadVersion);
+      }, 160);
+      window.setTimeout(() => {
+        void loadRecentActivity(account, loadVersion);
+      }, 320);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
       captureError("dashboard.loadData", error, { account: account || "" });
       const message = error instanceof Error ? error.message : "Failed to load dashboard data";
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (!options?.silent && loadVersionRef.current === loadVersion) {
+        setLoading(false);
+      }
     }
   };
 
@@ -400,7 +676,7 @@ const Dashboard = () => {
             <Button className={buttonClasses.ghostSm} onPress={() => navigate("/vaults")}>View Access Vaults</Button>
           </CardHeader>
           <CardBody className="p-0">
-            {loading ? (
+            {loading || activityLoading ? (
               <div className="p-6 space-y-4">
                 {[...Array(4)].map((_, i) => (
                   <Skeleton key={i} className="rounded-lg">
@@ -458,7 +734,10 @@ const Dashboard = () => {
         </Card>
 
         <div className="space-y-6">
-          <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+          <Card
+            id="approval-queue"
+            className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm scroll-mt-24"
+          >
             <CardHeader>
               <h2 className="text-xl font-semibold">Quick Actions</h2>
             </CardHeader>
@@ -524,7 +803,7 @@ const Dashboard = () => {
                       <div className="min-w-0">
                         <p className="font-medium truncate">{item.vaultName}</p>
                         <p className="text-xs text-gray-400">
-                          Request #{item.requestId} • Doc #{item.documentId}
+                          Request #{item.requestId} - Doc #{item.documentId}
                         </p>
                       </div>
                       <Button

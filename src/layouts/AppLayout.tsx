@@ -17,8 +17,10 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiUnlock,
+  FiBell,
 } from "react-icons/fi";
 import { useWeb3 } from "../context/Web3Context";
+import { contractService } from "../services/contract.service";
 import { shortenAddress } from "../utils/helpers";
 import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
@@ -40,11 +42,12 @@ const AvalancheLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
 const AppLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { account, isConnected, connect, disconnect, isFujiNetwork, switchToFuji } = useWeb3();
+  const { account, isConnected, connect, disconnect, isFujiNetwork, switchToFuji, provider, signer } = useWeb3();
   const [nickname, setNickname] = useState("");
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(true);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const desktopMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -184,6 +187,35 @@ const AppLayout = () => {
   }, [location.pathname]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadPendingApprovalCount = async () => {
+      if (!account || !isConnected || !provider || !isFujiNetwork) {
+        setPendingApprovalCount(0);
+        return;
+      }
+      try {
+        contractService.initialize(provider, signer ?? undefined);
+        const approvals = await contractService.fetchPendingApprovalsForGuardian(account, 20);
+        if (!cancelled) {
+          setPendingApprovalCount(approvals.length);
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingApprovalCount(0);
+        }
+      }
+    };
+
+    void loadPendingApprovalCount();
+    const interval = window.setInterval(loadPendingApprovalCount, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [account, isConnected, provider, signer, isFujiNetwork, location.pathname]);
+
+  useEffect(() => {
     const handleOutside = (event: MouseEvent) => {
       const target = event.target as Node;
       if (desktopMenuRef.current && !desktopMenuRef.current.contains(target)) {
@@ -221,6 +253,10 @@ const AppLayout = () => {
   const toggleDesktopSidebar = () => {
     setDesktopMenuOpen(false);
     setDesktopSidebarExpanded((prev) => !prev);
+  };
+
+  const openApprovalQueue = () => {
+    navigate("/dashboard#approval-queue");
   };
 
   return (
@@ -303,7 +339,7 @@ const AppLayout = () => {
             <Button
               isIconOnly
               onPress={toggleDesktopSidebar}
-              className="h-10 w-10 min-w-10 rounded-xl border border-gray-700/75 bg-gray-900/70 text-gray-300 hover:text-white hover:border-gray-600"
+              className="h-10 w-10 min-w-10 rounded-xl border border-gray-700/75 bg-gradient-to-b from-gray-900/95 to-gray-900/70 text-gray-300 hover:text-white hover:border-gray-500 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.95)]"
               aria-label="Collapse sidebar"
             >
               <FiChevronLeft className="text-[16px]" />
@@ -335,6 +371,30 @@ const AppLayout = () => {
               </button>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={openApprovalQueue}
+            className={`mt-2 w-full rounded-xl border px-3 py-2.5 flex items-center justify-between transition-colors ${
+              pendingApprovalCount > 0
+                ? "border-brand-700/55 bg-brand-700/12 text-brand-200"
+                : "border-gray-800/80 bg-gray-900/65 text-gray-300 hover:bg-gray-900/85"
+            }`}
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <FiBell className={pendingApprovalCount > 0 ? "text-brand-300" : "text-gray-500"} />
+              <span>Approval Queue</span>
+            </span>
+            <span
+              className={`min-w-[1.6rem] h-6 px-2 rounded-full text-xs font-semibold inline-flex items-center justify-center ${
+                pendingApprovalCount > 0
+                  ? "bg-brand-700/35 text-brand-200"
+                  : "bg-gray-800 text-gray-400"
+              }`}
+            >
+              {pendingApprovalCount}
+            </span>
+          </button>
 
           <nav className="mt-3 space-y-1.5">
             {navItems.map((item) => {
@@ -426,9 +486,10 @@ const AppLayout = () => {
             type="button"
             onClick={toggleDesktopSidebar}
             aria-label="Expand sidebar"
-            className="absolute -right-3 top-1/2 -translate-y-1/2 h-16 w-6 rounded-r-full border border-gray-700/75 bg-gray-100/90 text-gray-900 shadow-[0_14px_28px_-16px_rgba(0,0,0,0.8)] hover:bg-white transition-colors"
+            className="group absolute -right-4 top-1/2 -translate-y-1/2 h-[4.6rem] w-8 rounded-r-2xl rounded-l-md border border-gray-700/75 bg-gradient-to-b from-gray-900/96 to-gray-900/85 text-gray-300 shadow-[0_20px_30px_-18px_rgba(0,0,0,0.95)] hover:border-gray-500 hover:text-white transition-all"
           >
-            <FiChevronRight className="mx-auto text-[15px]" />
+            <span className="absolute left-[8px] top-1/2 -translate-y-1/2 h-9 w-px bg-gray-700/80 group-hover:bg-gray-500/80" />
+            <FiChevronRight className="mx-auto text-[15px] relative z-[1]" />
           </button>
         )}
       </aside>
@@ -446,6 +507,28 @@ const AppLayout = () => {
           </Link>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {isConnected && (
+              <button
+                type="button"
+                aria-label="Open approval queue"
+                onClick={openApprovalQueue}
+                className={`relative w-9 h-9 rounded-xl border text-gray-300 flex items-center justify-center transition-colors ${
+                  pendingApprovalCount > 0
+                    ? "border-brand-700/60 bg-brand-700/12 text-brand-300 shadow-[0_10px_20px_-16px_rgba(185,28,28,0.9)]"
+                    : "border-gray-700/75 bg-gray-900/75 hover:border-gray-600 hover:text-gray-100"
+                }`}
+              >
+                <FiBell className={`text-[14px] ${pendingApprovalCount > 0 ? "text-brand-300" : ""}`} />
+                {pendingApprovalCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 rounded-full bg-brand-700 text-[10px] font-semibold text-white leading-none inline-flex items-center justify-center">
+                    {pendingApprovalCount > 9 ? "9+" : pendingApprovalCount}
+                  </span>
+                )}
+                {pendingApprovalCount > 0 && (
+                  <span className="pointer-events-none absolute inset-0 rounded-xl border border-brand-500/45 animate-pulse" />
+                )}
+              </button>
+            )}
             {isFujiNetwork ? (
               <span
                 title="Avalanche Fuji"
