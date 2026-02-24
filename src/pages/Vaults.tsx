@@ -794,6 +794,11 @@ const Vaults = () => {
                     <span>Less Secure</span>
                     <span>More Secure</span>
                   </div>
+                  {formData.approvalThreshold >= formData.guardians.length + 1 && (
+                    <p className="mt-2 text-xs text-yellow-400">
+                      Requiring everyone can lock this vault if any guardian invite expires or is not accepted.
+                    </p>
+                  )}
                 </div>
               </div>
 

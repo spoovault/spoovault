@@ -106,6 +106,7 @@ const Documents = () => {
 
   const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [vaults, setVaults] = useState<VaultData[]>([]);
+  const [uploadableVaults, setUploadableVaults] = useState<VaultData[]>([]);
   const [activeAccessByDoc, setActiveAccessByDoc] = useState<Record<number, boolean>>({});
   const [latestRequestByDoc, setLatestRequestByDoc] = useState<Record<number, AccessRequestData | null>>({});
   const [releaseConditionByDoc, setReleaseConditionByDoc] = useState<Record<number, number>>({});
@@ -138,6 +139,7 @@ const Documents = () => {
       contractService.initialize(provider, signer);
       loadData();
     } else {
+      setUploadableVaults([]);
       setActiveAccessByDoc({});
       setLatestRequestByDoc({});
       setReleaseConditionByDoc({});
@@ -148,6 +150,7 @@ const Documents = () => {
   const loadData = async () => {
     if (!account) {
       setVaults([]);
+      setUploadableVaults([]);
       setDocuments([]);
       setActiveAccessByDoc({});
       setLatestRequestByDoc({});
@@ -179,6 +182,10 @@ const Documents = () => {
         const hasVaultPass = tokenVaultIds.has(vault.id);
         return isCreator || isGuardian || hasVaultPass;
       });
+      const guardianVaults = visibleVaults.filter((vault) =>
+        vault.guardians.some((guardian) => guardian.toLowerCase() === accountLower)
+      );
+      const guardianVaultIds = new Set<number>(guardianVaults.map((vault) => vault.id));
 
       const visibleVaultIds = new Set<number>(visibleVaults.map((vault) => vault.id));
       const scopedDocs = docsData.filter((doc) => visibleVaultIds.has(doc.vaultId));
@@ -189,9 +196,10 @@ const Documents = () => {
       const releaseMap = await contractService.getDocumentReleaseConditionMap(docIds);
 
       setVaults(visibleVaults);
+      setUploadableVaults(guardianVaults);
       setDocuments(scopedDocs);
       setSelectedVaultId((previous) =>
-        previous !== null && visibleVaultIds.has(previous) ? previous : null
+        previous !== null && guardianVaultIds.has(previous) ? previous : null
       );
       setActiveAccessByDoc(accessMap);
       setLatestRequestByDoc(requestMap);
@@ -201,6 +209,7 @@ const Documents = () => {
       captureError("documents.loadData", error, { account: account || "" });
       const message = error instanceof Error ? error.message : "Failed to load documents";
       toast.error(message);
+      setUploadableVaults([]);
       setActiveAccessByDoc({});
       setLatestRequestByDoc({});
       setReleaseConditionByDoc({});
@@ -509,6 +518,10 @@ const Documents = () => {
 
     if (!selectedVaultId) {
       toast.error("Please select a vault");
+      return;
+    }
+    if (!uploadableVaults.some((vault) => vault.id === selectedVaultId)) {
+      toast.error("You can only upload into vaults where your wallet is an active guardian.");
       return;
     }
 
@@ -1055,7 +1068,7 @@ const Documents = () => {
                     <option value="" disabled>
                       Select Vault
                     </option>
-                    {vaults.map((vault) => (
+                    {uploadableVaults.map((vault) => (
                       <option key={vault.id} value={vault.id}>
                         {vault.name || `Vault #${vault.id}`}
                       </option>
@@ -1063,9 +1076,9 @@ const Documents = () => {
                   </select>
                   <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 </div>
-                {vaults.length === 0 && (
+                {uploadableVaults.length === 0 && (
                   <p className="text-sm text-yellow-400">
-                    Create an access vault before uploading files.
+                    No guardian vaults available. Accept guardian invite or create a vault first.
                   </p>
                 )}
               </div>
@@ -1173,7 +1186,7 @@ const Documents = () => {
               className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
               onPress={handleUpload}
               isLoading={uploading}
-              isDisabled={vaults.length === 0 || !selectedFile || !selectedVaultId || uploading}
+              isDisabled={uploadableVaults.length === 0 || !selectedFile || !selectedVaultId || uploading}
             >
               {uploading ? uploadStageLabel(uploadStage) : "Upload Document"}
             </Button>

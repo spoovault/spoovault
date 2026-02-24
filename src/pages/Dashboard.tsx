@@ -50,6 +50,7 @@ interface DashboardCachePayload {
     totalGuardians: number;
     totalNFTs: number;
   };
+  issuedPassesForVisibleVaults: number;
   pendingApprovals: PendingApprovalData[];
 }
 
@@ -77,6 +78,7 @@ const Dashboard = () => {
   });
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalData[]>([]);
+  const [issuedPassesForVisibleVaults, setIssuedPassesForVisibleVaults] = useState(0);
   const [approvingRequestId, setApprovingRequestId] = useState<number | null>(null);
   const [packageExported, setPackageExported] = useState(false);
 
@@ -95,6 +97,7 @@ const Dashboard = () => {
       setDocuments([]);
       setRecentActivity([]);
       setPendingApprovals([]);
+      setIssuedPassesForVisibleVaults(0);
       setStats({
         totalVaults: 0,
         totalDocuments: 0,
@@ -157,6 +160,7 @@ const Dashboard = () => {
       return {
         vaults: parsed.vaults,
         stats: parsed.stats,
+        issuedPassesForVisibleVaults: parsed.issuedPassesForVisibleVaults ?? 0,
         pendingApprovals: parsed.pendingApprovals,
       };
     } catch {
@@ -179,6 +183,7 @@ const Dashboard = () => {
       }
       setVaults(parsed.vaults);
       setStats(parsed.stats);
+      setIssuedPassesForVisibleVaults(parsed.issuedPassesForVisibleVaults ?? 0);
       setPendingApprovals(parsed.pendingApprovals);
       setLoading(false);
       return true;
@@ -208,6 +213,7 @@ const Dashboard = () => {
     wallet: string,
     userVaults: VaultData[],
     fallbackStats: DashboardStats,
+    fallbackIssuedPasses: number,
     loadVersion: number
   ) => {
     if (!wallet) {
@@ -243,6 +249,8 @@ const Dashboard = () => {
       writeDashboardCache(wallet, {
         vaults: cached?.vaults ?? userVaults,
         stats: cached?.stats ?? fallbackStats,
+        issuedPassesForVisibleVaults:
+          cached?.issuedPassesForVisibleVaults ?? fallbackIssuedPasses,
         pendingApprovals: scopedApprovals,
       });
     } catch (error) {
@@ -290,6 +298,7 @@ const Dashboard = () => {
     wallet: string,
     userVaults: VaultData[],
     fallbackStats: DashboardStats,
+    fallbackIssuedPasses: number,
     fallbackApprovals: PendingApprovalData[],
     loadVersion: number
   ) => {
@@ -312,6 +321,8 @@ const Dashboard = () => {
           ...(cached?.stats ?? fallbackStats),
           totalDocuments: userDocuments.length,
         },
+        issuedPassesForVisibleVaults:
+          cached?.issuedPassesForVisibleVaults ?? fallbackIssuedPasses,
         pendingApprovals: cached?.pendingApprovals ?? fallbackApprovals,
       });
     } catch (error) {
@@ -363,6 +374,16 @@ const Dashboard = () => {
           guardianSet.add(guardian.toLowerCase());
         });
       });
+      const passSupplyByVault = await contractService.getActivePassCountByVault(
+        userVaults.map((vault) => vault.id)
+      );
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+      const issuedPasses = Object.values(passSupplyByVault).reduce(
+        (sum, count) => sum + count,
+        0
+      );
 
       const baseStats: DashboardStats = {
         totalVaults: userVaults.length,
@@ -375,17 +396,26 @@ const Dashboard = () => {
       setDocuments([]);
       setRecentActivity([]);
       setPendingApprovals([]);
+      setIssuedPassesForVisibleVaults(issuedPasses);
       setStats(baseStats);
 
       writeDashboardCache(account, {
         vaults: userVaults,
         stats: baseStats,
+        issuedPassesForVisibleVaults: issuedPasses,
         pendingApprovals: [],
       });
 
-      void loadDocumentsForUserVaults(account, userVaults, baseStats, [], loadVersion);
+      void loadDocumentsForUserVaults(
+        account,
+        userVaults,
+        baseStats,
+        issuedPasses,
+        [],
+        loadVersion
+      );
       window.setTimeout(() => {
-        void loadPendingApprovals(account, userVaults, baseStats, loadVersion);
+        void loadPendingApprovals(account, userVaults, baseStats, issuedPasses, loadVersion);
       }, 160);
       window.setTimeout(() => {
         void loadRecentActivity(account, loadVersion);
@@ -458,8 +488,8 @@ const Dashboard = () => {
       },
       {
         key: "pass",
-        done: stats.totalNFTs > 0,
-        title: "Mint beneficiary access pass",
+        done: issuedPassesForVisibleVaults > 0,
+        title: "Issue beneficiary access pass",
         route: "/nfts",
       },
       {
@@ -469,7 +499,7 @@ const Dashboard = () => {
         route: "/documents",
       },
     ],
-    [stats.totalVaults, stats.totalDocuments, stats.totalNFTs, packageExported]
+    [stats.totalVaults, stats.totalDocuments, issuedPassesForVisibleVaults, packageExported]
   );
 
   if (!isConnected) {
@@ -624,7 +654,7 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold mb-1">{stats.totalNFTs}</h3>
-                <p className="text-gray-400 text-sm">Access Passes</p>
+                <p className="text-gray-400 text-sm">My Access Passes</p>
               </CardBody>
             </Card>
           </>

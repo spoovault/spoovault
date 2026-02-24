@@ -19,6 +19,8 @@ import {
   FiEye,
   FiTrash,
   FiShield,
+  FiDownload,
+  FiExternalLink,
 } from "react-icons/fi";
 import { useWeb3 } from "../context/Web3Context";
 import {
@@ -52,16 +54,78 @@ const buildDefaultTokenURI = (vaultId: number, recipient: string): string => {
   return `data:application/json;base64,${encoded}`;
 };
 
+type TokenMetadata = Record<string, unknown>;
+
+const getExplorerTokenUrl = (tokenId: number): string => {
+  const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined;
+  if (!contractAddress) {
+    return getExplorerBaseUrl();
+  }
+  return `${getExplorerBaseUrl()}/token/${contractAddress}?a=${tokenId}`;
+};
+
+const decodeInlineJsonTokenURI = (tokenURI: string): TokenMetadata | null => {
+  try {
+    if (tokenURI.startsWith("data:application/json;base64,")) {
+      const encoded = tokenURI.split(",", 2)[1] || "";
+      return JSON.parse(atob(encoded));
+    }
+    if (tokenURI.startsWith("data:application/json,")) {
+      const encoded = tokenURI.split(",", 2)[1] || "";
+      return JSON.parse(decodeURIComponent(encoded));
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const buildFallbackMetadata = (token: TokenData): TokenMetadata => ({
+  name: `SpooVault Access Pass #${token.tokenId}`,
+  description: "Vault access pass metadata fallback",
+  tokenId: token.tokenId,
+  owner: token.owner,
+  vaultId: token.vaultId,
+  tokenURI: token.tokenURI || "",
+});
+
+const isWalletAuthorizationError = (error: any): boolean => {
+  const code =
+    error?.code ??
+    error?.error?.code ??
+    error?.info?.error?.code ??
+    error?.data?.originalError?.code ??
+    null;
+  const message = `${error?.shortMessage || ""} ${error?.message || ""}`.toLowerCase();
+  return (
+    code === 4100 ||
+    message.includes("not been authorized") ||
+    message.includes("has not been authorized") ||
+    message.includes("unauthorized")
+  );
+};
+
 const NFTGallery = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const {
+    isOpen: isViewModalOpen,
+    onOpen: onViewModalOpen,
+    onClose: onViewModalClose,
+  } = useDisclosure();
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
 
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [vaults, setVaults] = useState<VaultData[]>([]);
+  const [mintableVaults, setMintableVaults] = useState<VaultData[]>([]);
   const [loading, setLoading] = useState(true);
   const [minting, setMinting] = useState(false);
   const [burningTokenId, setBurningTokenId] = useState<number | null>(null);
   const [totalSupply, setTotalSupply] = useState(0);
+  const [viewingToken, setViewingToken] = useState<TokenData | null>(null);
+  const [viewMetadata, setViewMetadata] = useState<TokenMetadata | null>(null);
+  const [viewMetadataSource, setViewMetadataSource] = useState("");
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewNotice, setViewNotice] = useState("");
 
   const [form, setForm] = useState({
     vaultId: "",
@@ -82,6 +146,7 @@ const NFTGallery = () => {
     } else {
       setTokens([]);
       setVaults([]);
+      setMintableVaults([]);
       setTotalSupply(0);
       setLoading(false);
     }
@@ -91,6 +156,7 @@ const NFTGallery = () => {
     if (!account) {
       setTokens([]);
       setVaults([]);
+      setMintableVaults([]);
       setTotalSupply(0);
       setLoading(false);
       return;
@@ -117,9 +183,13 @@ const NFTGallery = () => {
         const hasVaultPass = tokenVaultIds.has(vault.id);
         return isCreator || isGuardian || hasVaultPass;
       });
+      const guardianVaults = visibleVaults.filter((vault) =>
+        vault.guardians.some((guardian) => guardian.toLowerCase() === accountLower)
+      );
 
       setTokens(tokenData);
       setVaults(visibleVaults);
+      setMintableVaults(guardianVaults);
       setTotalSupply(supply);
     } catch (error) {
       console.error("Error loading tokens:", error);
@@ -156,6 +226,11 @@ const NFTGallery = () => {
       toast.error("Vault ID is required");
       return;
     }
+    const canMintForVault = mintableVaults.some((vault) => vault.id === vaultId);
+    if (!canMintForVault) {
+      toast.error("You can only mint for vaults where your wallet is an active guardian.");
+      return;
+    }
 
     if (!isValidAddress(form.recipient)) {
       toast.error("Invalid recipient address");
@@ -182,29 +257,99 @@ const NFTGallery = () => {
       loadTokens();
     } catch (error: any) {
       captureError("nftGallery.mint", error, { vaultId: form.vaultId, recipient: form.recipient });
+      if (isWalletAuthorizationError(error)) {
+        toast.custom((t) => (
+          <div className="rounded-xl border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 shadow-xl">
+            <p className="font-medium">Wallet authorization required.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Reconnect wallet, then retry mint.</p>
+            <Button
+              size="sm"
+              className={`${buttonClasses.primarySm} mt-2`}
+              onPress={async () => {
+                toast.dismiss(t.id);
+                await connect();
+              }}
+            >
+              Reconnect Wallet
+            </Button>
+          </div>
+        ));
+        return;
+      }
       toast.error(error.message || "Failed to mint token");
     } finally {
       setMinting(false);
     }
   };
 
-  const handleViewToken = (token: TokenData) => {
+  const handleViewToken = async (token: TokenData) => {
+    setViewingToken(token);
+    setViewMetadata(null);
+    setViewMetadataSource("");
+    setViewNotice("");
+    setViewLoading(true);
+    onViewModalOpen();
+
     const rawUri = token.tokenURI?.trim() || "";
-    if (rawUri) {
-      const resolvedUri = rawUri.startsWith("ipfs://") ? getIPFSURL(rawUri) : rawUri;
-      window.open(resolvedUri, "_blank", "noopener,noreferrer");
+    if (!rawUri) {
+      setViewMetadata(buildFallbackMetadata(token));
+      setViewMetadataSource(getExplorerTokenUrl(token.tokenId));
+      setViewNotice("No token URI was set for this token. Showing fallback details.");
+      setViewLoading(false);
       return;
     }
 
-    const contractAddress = import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined;
-    if (!contractAddress) {
-      toast.error("Token URI is empty and contract address is not configured.");
+    const inlineMetadata = decodeInlineJsonTokenURI(rawUri);
+    if (inlineMetadata) {
+      setViewMetadata(inlineMetadata);
+      setViewMetadataSource(rawUri);
+      setViewNotice("Inline token metadata decoded successfully.");
+      setViewLoading(false);
       return;
     }
 
-    const explorerUrl = `${getExplorerBaseUrl()}/token/${contractAddress}?a=${token.tokenId}`;
-    window.open(explorerUrl, "_blank", "noopener,noreferrer");
-    toast("No token URI set. Opened token on explorer.");
+    const resolvedUri = rawUri.startsWith("ipfs://") ? getIPFSURL(rawUri) : rawUri;
+    setViewMetadataSource(resolvedUri);
+
+    try {
+      const response = await fetch(resolvedUri, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(`Metadata fetch failed (${response.status})`);
+      }
+      const text = await response.text();
+      const parsed = JSON.parse(text) as TokenMetadata;
+      setViewMetadata(parsed);
+      setViewNotice("Token metadata loaded from URI.");
+    } catch {
+      setViewMetadata({
+        ...buildFallbackMetadata(token),
+        tokenURI: rawUri,
+      });
+      setViewNotice("Could not parse metadata from URI. Showing fallback details.");
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const handleDownloadViewMetadata = () => {
+    if (!viewingToken) return;
+    const payload = viewMetadata ?? buildFallbackMetadata(viewingToken);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `spoovault-pass-${viewingToken.tokenId}-metadata.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Downloaded metadata for token #${viewingToken.tokenId}`);
+  };
+
+  const handleOpenMetadataSource = () => {
+    if (!viewingToken) return;
+    const target = viewMetadataSource || getExplorerTokenUrl(viewingToken.tokenId);
+    window.open(target, "_blank", "noopener,noreferrer");
   };
 
   const handleBurn = async (tokenId: number) => {
@@ -215,6 +360,25 @@ const NFTGallery = () => {
       loadTokens();
     } catch (error: any) {
       captureError("nftGallery.burn", error, { tokenId });
+      if (isWalletAuthorizationError(error)) {
+        toast.custom((t) => (
+          <div className="rounded-xl border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 shadow-xl">
+            <p className="font-medium">Wallet authorization expired.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Reconnect wallet to continue burning passes.</p>
+            <Button
+              size="sm"
+              className={`${buttonClasses.primarySm} mt-2`}
+              onPress={async () => {
+                toast.dismiss(t.id);
+                await connect();
+              }}
+            >
+              Reconnect Wallet
+            </Button>
+          </div>
+        ));
+        return;
+      }
       toast.error(error.message || "Failed to burn token");
     } finally {
       setBurningTokenId(null);
@@ -406,7 +570,9 @@ const NFTGallery = () => {
                       fullWidth
                       variant="flat"
                       startContent={<FiEye />}
-                      onPress={() => handleViewToken(token)}
+                      onPress={() => {
+                        void handleViewToken(token);
+                      }}
                     >
                       View
                     </Button>
@@ -427,6 +593,78 @@ const NFTGallery = () => {
           ))
         )}
       </div>
+
+      <Modal
+        isOpen={isViewModalOpen}
+        onClose={onViewModalClose}
+        size="lg"
+        backdrop="blur"
+        classNames={{
+          wrapper: "z-[130]",
+          backdrop: "bg-black/70",
+        }}
+        scrollBehavior="inside"
+        placement="center"
+      >
+        <ModalContent className="bg-gray-950 w-[94vw] max-w-2xl max-h-[82vh] overflow-hidden border border-gray-800/90 shadow-2xl">
+          <ModalHeader className="border-b border-gray-800/80 px-4 sm:px-6 py-4">
+            Pass Details
+          </ModalHeader>
+          <ModalBody className="modal-scroll max-h-[66vh] overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+            {!viewingToken ? (
+              <p className="text-sm text-gray-400">No token selected.</p>
+            ) : (
+              <>
+                <div className="rounded-xl border border-gray-800/80 bg-gray-900/60 p-3 space-y-1">
+                  <p className="text-sm font-semibold">Access Pass #{viewingToken.tokenId}</p>
+                  <p className="text-xs text-gray-400">
+                    Vault:{" "}
+                    {viewingToken.vaultId !== null
+                      ? vaultNameById[viewingToken.vaultId] || `Vault #${viewingToken.vaultId}`
+                      : "Unknown"}
+                  </p>
+                  <p className="text-xs text-gray-500">Owner: {shortenAddress(viewingToken.owner)}</p>
+                </div>
+
+                {viewNotice && (
+                  <div className="rounded-xl border border-gray-700/70 bg-gray-900/60 px-3 py-2 text-xs text-gray-300">
+                    {viewNotice}
+                  </div>
+                )}
+
+                {viewLoading ? (
+                  <p className="text-sm text-gray-400">Loading metadata...</p>
+                ) : (
+                  <pre className="rounded-xl border border-gray-800/85 bg-black/35 p-3 text-xs text-gray-200 overflow-auto whitespace-pre-wrap break-all">
+{JSON.stringify(viewMetadata ?? {}, null, 2)}
+                  </pre>
+                )}
+              </>
+            )}
+          </ModalBody>
+          <ModalFooter className="border-t border-gray-800/80 px-4 sm:px-6 py-3 flex-col-reverse sm:flex-row gap-2">
+            <Button className={`${buttonClasses.ghostMd} w-full sm:w-auto`} onPress={onViewModalClose}>
+              Close
+            </Button>
+            <Button
+              className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
+              startContent={<FiExternalLink />}
+              onPress={handleOpenMetadataSource}
+              isDisabled={!viewingToken}
+            >
+              Open Source
+            </Button>
+            <Button
+              className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
+              startContent={<FiDownload />}
+              onPress={handleDownloadViewMetadata}
+              isDisabled={!viewingToken}
+            >
+              Download Metadata
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal
         isOpen={isOpen}
@@ -481,7 +719,7 @@ const NFTGallery = () => {
                     className={modalSelectClassName}
                   >
                     <option value="">Select Vault</option>
-                    {vaults.map((vault) => (
+                    {mintableVaults.map((vault) => (
                       <option key={vault.id} value={vault.id}>
                         {vault.name || `Vault #${vault.id}`}
                       </option>
@@ -489,6 +727,11 @@ const NFTGallery = () => {
                   </select>
                   <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 </div>
+                {mintableVaults.length === 0 && (
+                  <p className="text-sm text-yellow-400">
+                    No guardian vaults available for this wallet. Accept invite first.
+                  </p>
+                )}
               </div>
 
               <div className="p-4 bg-brand-700/10 border border-brand-700/20 rounded-lg">
@@ -506,6 +749,7 @@ const NFTGallery = () => {
               className={`${buttonClasses.primaryMd} w-full sm:w-auto`}
               onPress={handleMint}
               isLoading={minting}
+              isDisabled={mintableVaults.length === 0 || minting}
             >
               Mint Pass
             </Button>

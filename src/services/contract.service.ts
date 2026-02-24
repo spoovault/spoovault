@@ -403,7 +403,7 @@ const getPendingRequestScanDepth = (): number => {
   if (!Number.isNaN(configured) && configured > 0) {
     return configured;
   }
-  return 300;
+  return 1500;
 };
 
 const getFromBlock = async (): Promise<number> => {
@@ -1137,6 +1137,44 @@ const fetchUserTokens = async (account: string): Promise<TokenData[]> => {
     .sort((a, b) => b.tokenId - a.tokenId);
 };
 
+const getActivePassCountByVault = async (
+  vaultIds: number[]
+): Promise<Record<number, number>> => {
+  await ensureContractDeployed();
+  if (vaultIds.length === 0) {
+    return {};
+  }
+
+  const targetVaultIds = new Set<number>(vaultIds);
+  const [mintedLogs, burnedLogs] = await Promise.all([
+    getEventLogs("NFTMinted"),
+    getEventLogs("NFTBurned"),
+  ]);
+
+  const burnedTokenIds = new Set<number>(
+    burnedLogs.map((entry) => Number(entry.parsed.args.tokenId))
+  );
+
+  const counts: Record<number, number> = {};
+  vaultIds.forEach((vaultId) => {
+    counts[vaultId] = 0;
+  });
+
+  for (const entry of mintedLogs) {
+    const tokenId = Number(entry.parsed.args.tokenId);
+    const vaultId = Number(entry.parsed.args.vaultId);
+    if (!targetVaultIds.has(vaultId)) {
+      continue;
+    }
+    if (burnedTokenIds.has(tokenId)) {
+      continue;
+    }
+    counts[vaultId] = (counts[vaultId] || 0) + 1;
+  }
+
+  return counts;
+};
+
 const getRecentActivity = async (limit = 5): Promise<ActivityEvent[]> => {
   await ensureContractDeployed();
   const contract = ensureReadContract();
@@ -1243,6 +1281,7 @@ export const contractService = {
   fetchDocuments,
   fetchPendingInvites,
   fetchUserTokens,
+  getActivePassCountByVault,
   getTotalSupply,
   hasActiveAccess,
   getActiveAccessMap,
