@@ -17,11 +17,13 @@ import {
   FiPlus,
   FiChevronDown,
   FiEye,
+  FiFile,
   FiTrash,
   FiShield,
   FiDownload,
   FiExternalLink,
 } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
 import { useWeb3 } from "../context/Web3Context";
 import {
   contractService,
@@ -106,6 +108,7 @@ const isWalletAuthorizationError = (error: any): boolean => {
 };
 
 const NFTGallery = () => {
+  const navigate = useNavigate();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const {
     isOpen: isViewModalOpen,
@@ -385,6 +388,14 @@ const NFTGallery = () => {
     }
   };
 
+  const handleOpenVaultDocuments = (token: TokenData) => {
+    if (token.vaultId === null) {
+      toast.error("No vault is linked to this pass.");
+      return;
+    }
+    navigate(`/access?vault=${token.vaultId}&scope=accessible`);
+  };
+
   const ownedVaultCount = useMemo(() => {
     const vaultIds = new Set<number>();
     tokens.forEach((token) => {
@@ -587,6 +598,16 @@ const NFTGallery = () => {
                       Burn
                     </Button>
                   </div>
+                  <Button
+                    fullWidth
+                    variant="flat"
+                    className="mt-2"
+                    startContent={<FiFile />}
+                    isDisabled={token.vaultId === null}
+                    onPress={() => handleOpenVaultDocuments(token)}
+                  >
+                    Vault Documents
+                  </Button>
                 </div>
               </CardBody>
             </Card>

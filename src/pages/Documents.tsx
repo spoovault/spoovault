@@ -56,6 +56,7 @@ import {
 import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
 import { captureError } from "../services/telemetry.service";
+import { keyInboxService } from "../services/keyInbox.service";
 
 const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
 
@@ -127,6 +128,7 @@ const Documents = () => {
   const [keyBackupConfirmed, setKeyBackupConfirmed] = useState(false);
   const [shareTargetDocId, setShareTargetDocId] = useState<number | null>(null);
   const [shareRecipient, setShareRecipient] = useState("");
+  const [sendingInboxKey, setSendingInboxKey] = useState(false);
   const keyImportInputRef = useRef<HTMLInputElement | null>(null);
   const stepChipClass = "bg-brand-700/12 text-brand-300 border border-brand-700/35";
   const selectFieldWithIconClass =
@@ -412,6 +414,75 @@ const Documents = () => {
 
     toast.success("Beneficiary key package downloaded");
     resetShareModal();
+  };
+
+  const sendBeneficiaryKeyToInbox = async () => {
+    if (!shareTargetDocId) {
+      toast.error("Select a document first");
+      return;
+    }
+    if (!account) {
+      toast.error("Connect wallet first");
+      return;
+    }
+
+    const recipient = shareRecipient.trim();
+    if (!isValidAddress(recipient)) {
+      toast.error("Enter a valid beneficiary wallet address");
+      return;
+    }
+
+    const key = getStoredKey(shareTargetDocId);
+    if (!key) {
+      toast.error("Encryption key is missing for this document");
+      return;
+    }
+
+    const selectedDoc = documents.find((doc) => doc.id === shareTargetDocId);
+    if (!selectedDoc) {
+      toast.error("Document details not found");
+      return;
+    }
+
+    if (!keyInboxService.isConfigured()) {
+      toast.error("IPFS is not configured");
+      return;
+    }
+
+    setSendingInboxKey(true);
+    try {
+      await keyInboxService.sendKeyEnvelope({
+        version: 1,
+        type: "beneficiary_key_envelope",
+        app: "SpooVault",
+        contract: import.meta.env.VITE_CONTRACT_ADDRESS || "",
+        chainId: Number(import.meta.env.VITE_CHAIN_ID) || 0,
+        vaultId: selectedDoc.vaultId,
+        documentId: shareTargetDocId,
+        beneficiary: recipient.toLowerCase(),
+        issuedBy: account.toLowerCase(),
+        issuedAt: new Date().toISOString(),
+        key,
+      });
+
+      try {
+        const flagKey = `spoovault-beneficiary-package-exported-${account.toLowerCase()}`;
+        localStorage.setItem(flagKey, "1");
+        window.dispatchEvent(new Event("spoovault-beneficiary-package-exported"));
+      } catch {
+        // ignore localStorage errors
+      }
+
+      toast.success("Key sent to beneficiary in-app inbox");
+      resetShareModal();
+    } catch (error: any) {
+      captureError("documents.sendBeneficiaryKeyToInbox", error, {
+        documentId: shareTargetDocId,
+      });
+      toast.error(error?.message || "Failed to send key to beneficiary inbox");
+    } finally {
+      setSendingInboxKey(false);
+    }
   };
 
   const documentsWithMetadata = useMemo(() => {
@@ -1309,12 +1380,20 @@ const Documents = () => {
               <p className="text-sm font-medium">How beneficiary uses this package</p>
               <p className="text-xs text-gray-400">1. Receive an NFT pass for the vault.</p>
               <p className="text-xs text-gray-400">2. Request document access and wait for guardian approvals.</p>
-              <p className="text-xs text-gray-400">3. Import this package using "Import Key Backup".</p>
+              <p className="text-xs text-gray-400">3. Open My Access and click "Fetch Inbox Keys" (or import package file).</p>
             </div>
           </ModalBody>
           <ModalFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button className={`${buttonClasses.ghostMd} w-full sm:w-auto`} onPress={resetShareModal}>
               Cancel
+            </Button>
+            <Button
+              className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
+              onPress={sendBeneficiaryKeyToInbox}
+              isDisabled={!shareTargetDocId || !shareRecipient.trim() || sendingInboxKey}
+              isLoading={sendingInboxKey}
+            >
+              Send to In-App Inbox
             </Button>
             <Button
               className={`${buttonClasses.primaryMd} w-full sm:w-auto`}

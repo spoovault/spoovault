@@ -1,0 +1,206 @@
+import axios from "axios";
+
+const PINATA_API_URL =
+  import.meta.env.VITE_IPFS_API_URL || "https://api.pinata.cloud";
+const PINATA_JWT = import.meta.env.VITE_PINATA_JWT;
+const PINATA_API_KEY = import.meta.env.VITE_PINATA_API_KEY;
+const PINATA_API_SECRET = import.meta.env.VITE_PINATA_API_SECRET;
+const IPFS_GATEWAY =
+  import.meta.env.VITE_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
+
+const ENVELOPE_NAME = "spoovault-beneficiary-key-envelope";
+
+export interface KeyEnvelopePayload {
+  version: number;
+  type: "beneficiary_key_envelope";
+  app: "SpooVault";
+  contract: string;
+  chainId: number;
+  vaultId: number;
+  documentId: number;
+  beneficiary: string;
+  issuedBy: string;
+  issuedAt: string;
+  key: string;
+}
+
+interface PinRow {
+  ipfs_pin_hash?: string;
+  date_pinned?: string;
+  metadata?: {
+    name?: string;
+    keyvalues?: Record<string, string>;
+  };
+}
+
+const isConfigured = (): boolean => {
+  return !!PINATA_JWT || (!!PINATA_API_KEY && !!PINATA_API_SECRET);
+};
+
+const buildAuthHeaders = (): Record<string, string> => {
+  if (PINATA_JWT) {
+    return { Authorization: `Bearer ${PINATA_JWT}` };
+  }
+  if (PINATA_API_KEY && PINATA_API_SECRET) {
+    return {
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET,
+    };
+  }
+  return {};
+};
+
+const normalizeAddress = (value: string): string => value.trim().toLowerCase();
+
+const getGatewayUrl = (hash: string): string => `${IPFS_GATEWAY}${hash}`;
+
+const sendKeyEnvelope = async (payload: KeyEnvelopePayload): Promise<string> => {
+  if (!isConfigured()) {
+    throw new Error("IPFS is not configured");
+  }
+
+  const beneficiary = normalizeAddress(payload.beneficiary);
+  const contract = normalizeAddress(payload.contract);
+  const issuedBy = normalizeAddress(payload.issuedBy);
+
+  const content: KeyEnvelopePayload = {
+    ...payload,
+    beneficiary,
+    contract,
+    issuedBy,
+  };
+
+  const response = await axios.post(
+    `${PINATA_API_URL}/pinning/pinJSONToIPFS`,
+    {
+      pinataContent: content,
+      pinataMetadata: {
+        name: ENVELOPE_NAME,
+        keyvalues: {
+          type: "beneficiary_key_envelope",
+          beneficiary,
+          contract,
+          chainId: String(content.chainId),
+          documentId: String(content.documentId),
+          vaultId: String(content.vaultId),
+          issuedBy,
+          issuedAt: content.issuedAt,
+        },
+      },
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        ...buildAuthHeaders(),
+      },
+      timeout: 30000,
+    }
+  );
+
+  const hash = String(response?.data?.IpfsHash || "");
+  if (!hash) {
+    throw new Error("Failed to publish key envelope");
+  }
+  return hash;
+};
+
+const listEnvelopeHashesForBeneficiary = async (
+  beneficiaryAddress: string,
+  options?: { limit?: number }
+): Promise<string[]> => {
+  if (!isConfigured()) {
+    throw new Error("IPFS is not configured");
+  }
+
+  const target = normalizeAddress(beneficiaryAddress);
+  const maxMatches = Math.max(1, Math.min(options?.limit ?? 30, 100));
+  const pageLimit = 100;
+  const maxPages = 6;
+  const matches: string[] = [];
+
+  for (let page = 0; page < maxPages && matches.length < maxMatches; page++) {
+    const response = await axios.get(`${PINATA_API_URL}/data/pinList`, {
+      headers: buildAuthHeaders(),
+      params: {
+        status: "pinned",
+        pageLimit,
+        pageOffset: page * pageLimit,
+      },
+      timeout: 30000,
+    });
+
+    const rows = Array.isArray(response?.data?.rows)
+      ? (response.data.rows as PinRow[])
+      : [];
+    if (rows.length === 0) {
+      break;
+    }
+
+    for (const row of rows) {
+      const hash = String(row.ipfs_pin_hash || "");
+      const metadataName = String(row.metadata?.name || "");
+      const keyvalues = row.metadata?.keyvalues || {};
+      const rowType = String(keyvalues.type || "");
+      const rowBeneficiary = normalizeAddress(String(keyvalues.beneficiary || ""));
+      if (!hash) {
+        continue;
+      }
+      if (metadataName !== ENVELOPE_NAME) {
+        continue;
+      }
+      if (rowType !== "beneficiary_key_envelope") {
+        continue;
+      }
+      if (rowBeneficiary !== target) {
+        continue;
+      }
+      matches.push(hash);
+      if (matches.length >= maxMatches) {
+        break;
+      }
+    }
+  }
+
+  return matches;
+};
+
+const fetchEnvelopeByHash = async (hash: string): Promise<KeyEnvelopePayload | null> => {
+  try {
+    const response = await axios.get(getGatewayUrl(hash), { timeout: 30000 });
+    if (!response?.data || typeof response.data !== "object") {
+      return null;
+    }
+    return response.data as KeyEnvelopePayload;
+  } catch {
+    return null;
+  }
+};
+
+const fetchBeneficiaryInbox = async (
+  beneficiaryAddress: string,
+  options?: { limit?: number }
+): Promise<KeyEnvelopePayload[]> => {
+  const hashes = await listEnvelopeHashesForBeneficiary(beneficiaryAddress, options);
+  if (hashes.length === 0) {
+    return [];
+  }
+
+  const envelopes = await Promise.all(hashes.map((hash) => fetchEnvelopeByHash(hash)));
+  const normalizedRecipient = normalizeAddress(beneficiaryAddress);
+
+  return envelopes
+    .filter((item): item is KeyEnvelopePayload => item !== null)
+    .filter((item) => normalizeAddress(item.beneficiary) === normalizedRecipient)
+    .sort((a, b) => {
+      const aTime = Date.parse(a.issuedAt || "");
+      const bTime = Date.parse(b.issuedAt || "");
+      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+    });
+};
+
+export const keyInboxService = {
+  isConfigured,
+  sendKeyEnvelope,
+  fetchBeneficiaryInbox,
+};
+

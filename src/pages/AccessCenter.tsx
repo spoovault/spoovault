@@ -22,6 +22,7 @@ import {
   FiEye,
   FiUpload,
 } from "react-icons/fi";
+import { useSearchParams } from "react-router-dom";
 import CryptoJS from "crypto-js";
 import { useWeb3 } from "../context/Web3Context";
 import {
@@ -41,6 +42,7 @@ import {
 } from "../utils/helpers";
 import { toast } from "react-hot-toast";
 import { captureError } from "../services/telemetry.service";
+import { keyInboxService } from "../services/keyInbox.service";
 
 const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
 
@@ -72,18 +74,40 @@ type AccessState =
   | "no_pass"
   | "can_request";
 
+type InboxKeyStatus =
+  | "ready"
+  | "awaiting_approval"
+  | "wrong_contract"
+  | "wrong_network";
+
+interface InboxKeyPreviewItem {
+  documentId: number;
+  vaultId: number;
+  vaultName: string;
+  issuedAt: string;
+  status: InboxKeyStatus;
+}
+
 const AccessCenter = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [requestingDocId, setRequestingDocId] = useState<number | null>(null);
+  const [fetchingInboxKeys, setFetchingInboxKeys] = useState(false);
+  const [inboxEnvelopeCount, setInboxEnvelopeCount] = useState(0);
+  const [inboxPreviewItems, setInboxPreviewItems] = useState<InboxKeyPreviewItem[]>([]);
   const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [vaults, setVaults] = useState<VaultData[]>([]);
   const [tokens, setTokens] = useState<TokenData[]>([]);
   const [activeAccessByDoc, setActiveAccessByDoc] = useState<Record<number, boolean>>({});
   const [latestRequestByDoc, setLatestRequestByDoc] = useState<Record<number, AccessRequestData | null>>({});
   const keyImportInputRef = useRef<HTMLInputElement | null>(null);
+  const selectedVaultFromQuery = Number(searchParams.get("vault") || "");
+  const hasVaultFilter =
+    Number.isFinite(selectedVaultFromQuery) && selectedVaultFromQuery > 0;
+  const accessibleOnly = searchParams.get("scope") === "accessible";
 
   useEffect(() => {
     if (isConnected && provider && signer && isFujiNetwork) {
@@ -209,6 +233,140 @@ const AccessCenter = () => {
     }
   };
 
+  const handleFetchInboxKeys = async () => {
+    if (!account) {
+      toast.error("Connect wallet first");
+      return;
+    }
+    if (!keyInboxService.isConfigured()) {
+      toast.error("IPFS is not configured");
+      return;
+    }
+
+    setFetchingInboxKeys(true);
+    let imported = 0;
+    let skippedNotApproved = 0;
+    let skippedWrongChain = 0;
+    let skippedWrongContract = 0;
+
+    try {
+      const expectedContract = (
+        (import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined) || ""
+      ).toLowerCase();
+      const expectedChainId = Number(import.meta.env.VITE_CHAIN_ID);
+      const envelopes = await keyInboxService.fetchBeneficiaryInbox(account, {
+        limit: 40,
+      });
+      setInboxEnvelopeCount(envelopes.length);
+      setInboxPreviewItems([]);
+
+      if (envelopes.length === 0) {
+        toast("No inbox keys found for this wallet.");
+        return;
+      }
+
+      const latestByDoc = new Map<number, (typeof envelopes)[number]>();
+      for (const envelope of envelopes) {
+        const docId = Number(envelope.documentId);
+        if (!docId || !Number.isFinite(docId)) {
+          continue;
+        }
+        const current = latestByDoc.get(docId);
+        if (!current) {
+          latestByDoc.set(docId, envelope);
+          continue;
+        }
+        const currentTs = Date.parse(current.issuedAt || "");
+        const nextTs = Date.parse(envelope.issuedAt || "");
+        if ((Number.isNaN(currentTs) ? 0 : currentTs) <= (Number.isNaN(nextTs) ? 0 : nextTs)) {
+          latestByDoc.set(docId, envelope);
+        }
+      }
+
+      const previews: InboxKeyPreviewItem[] = [];
+      for (const envelope of latestByDoc.values()) {
+        const documentId = Number(envelope.documentId);
+        const vaultId = Number(envelope.vaultId);
+        const key = (envelope.key || "").trim();
+        if (!documentId || !/^[a-fA-F0-9]{64}$/.test(key)) {
+          continue;
+        }
+
+        const vaultName = vaultNameById[vaultId] || `Vault #${vaultId || "?"}`;
+        const envelopeContract = (envelope.contract || "").toLowerCase();
+        const envelopeChainId = Number(envelope.chainId);
+        if (expectedContract && envelopeContract && envelopeContract !== expectedContract) {
+          skippedWrongContract += 1;
+          previews.push({
+            documentId,
+            vaultId,
+            vaultName,
+            issuedAt: envelope.issuedAt || "",
+            status: "wrong_contract",
+          });
+          continue;
+        }
+        if (
+          Number.isFinite(expectedChainId) &&
+          expectedChainId > 0 &&
+          Number.isFinite(envelopeChainId) &&
+          envelopeChainId > 0 &&
+          envelopeChainId !== expectedChainId
+        ) {
+          skippedWrongChain += 1;
+          previews.push({
+            documentId,
+            vaultId,
+            vaultName,
+            issuedAt: envelope.issuedAt || "",
+            status: "wrong_network",
+          });
+          continue;
+        }
+
+        const hasAccess = await contractService.hasActiveAccess(documentId, account);
+        if (!hasAccess) {
+          skippedNotApproved += 1;
+          previews.push({
+            documentId,
+            vaultId,
+            vaultName,
+            issuedAt: envelope.issuedAt || "",
+            status: "awaiting_approval",
+          });
+          continue;
+        }
+
+        localStorage.setItem(getKeyStorageKey(documentId), key);
+        previews.push({
+          documentId,
+          vaultId,
+          vaultName,
+          issuedAt: envelope.issuedAt || "",
+          status: "ready",
+        });
+        imported += 1;
+      }
+      setInboxPreviewItems(previews);
+
+      if (imported > 0) {
+        await loadData();
+        toast.success(`Imported ${imported} key${imported > 1 ? "s" : ""} from inbox`);
+      } else {
+        const parts: string[] = [];
+        if (skippedNotApproved > 0) parts.push(`${skippedNotApproved} not approved yet`);
+        if (skippedWrongContract > 0) parts.push(`${skippedWrongContract} wrong contract`);
+        if (skippedWrongChain > 0) parts.push(`${skippedWrongChain} wrong network`);
+        toast(parts.length > 0 ? `No keys imported (${parts.join(", ")})` : "No valid keys found");
+      }
+    } catch (error: any) {
+      captureError("accessCenter.fetchInboxKeys", error, { account });
+      toast.error(error?.message || "Failed to fetch inbox keys");
+    } finally {
+      setFetchingInboxKeys(false);
+    }
+  };
+
   const vaultNameById = useMemo(() => {
     const map: Record<number, string> = {};
     vaults.forEach((vault) => {
@@ -250,7 +408,8 @@ const AccessCenter = () => {
     hasChainAccess: boolean,
     hasLocalKey: boolean,
     hasVaultPass: boolean,
-    latestRequest: AccessRequestData | null
+    latestRequest: AccessRequestData | null,
+    isVaultCreator: boolean
   ): AccessState => {
     const nowInSeconds = Math.floor(Date.now() / 1000);
     const isPending =
@@ -258,6 +417,11 @@ const AccessCenter = () => {
       latestRequest.status === 0 &&
       latestRequest.expiresAt > nowInSeconds;
 
+    if (isVaultCreator) {
+      if (hasLocalKey) return "ready";
+      return "approved_key_missing";
+    }
+    if (!hasVaultPass) return "no_pass";
     if (hasChainAccess && hasLocalKey) return "ready";
     if (hasChainAccess && !hasLocalKey) return "approved_key_missing";
     if (isPending) return "request_pending";
@@ -268,7 +432,6 @@ const AccessCenter = () => {
     ) {
       return "request_expired";
     }
-    if (!hasVaultPass) return "no_pass";
     return "can_request";
   };
 
@@ -279,11 +442,17 @@ const AccessCenter = () => {
       const hasChainAccess = !!activeAccessByDoc[doc.id];
       const hasVaultPass = vaultPassSet.has(doc.vaultId);
       const latestRequest = latestRequestByDoc[doc.id] ?? null;
+      const vault = vaults.find((item) => item.id === doc.vaultId);
+      const isVaultCreator =
+        !!account &&
+        !!vault &&
+        vault.creator.toLowerCase() === account.toLowerCase();
       const state = resolveAccessState(
         hasChainAccess,
         hasLocalKey,
         hasVaultPass,
-        latestRequest
+        latestRequest,
+        isVaultCreator
       );
       return {
         doc,
@@ -292,16 +461,25 @@ const AccessCenter = () => {
         hasLocalKey,
         hasChainAccess,
         hasVaultPass,
+        isVaultCreator,
         latestRequest,
         state,
       };
     });
-  }, [documents, activeAccessByDoc, latestRequestByDoc, vaultPassSet]);
+  }, [documents, activeAccessByDoc, latestRequestByDoc, vaultPassSet, vaults, account]);
 
   const filteredRows = useMemo(() => {
     const term = search.toLowerCase().trim();
-    if (!term) return rows;
     return rows.filter((item) => {
+      if (hasVaultFilter && item.doc.vaultId !== selectedVaultFromQuery) {
+        return false;
+      }
+      if (accessibleOnly && (!item.hasChainAccess || (!item.hasVaultPass && !item.isVaultCreator))) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
       const vaultName = vaultNameById[item.doc.vaultId] || `Vault #${item.doc.vaultId}`;
       return (
         item.name.toLowerCase().includes(term) ||
@@ -309,7 +487,7 @@ const AccessCenter = () => {
         item.doc.ipfsHash.toLowerCase().includes(term)
       );
     });
-  }, [rows, search, vaultNameById]);
+  }, [rows, search, vaultNameById, hasVaultFilter, selectedVaultFromQuery, accessibleOnly]);
 
   const handleRequestAccess = async (docId: number) => {
     if (!isConnected) {
@@ -351,7 +529,7 @@ const AccessCenter = () => {
 
     const key = getStoredKey(doc.id);
     if (!key) {
-      throw new Error("Encryption key not found. Import a beneficiary package first.");
+      throw new Error("Encryption key not found. Import the key package first.");
     }
 
     const response = await fetch(getIPFSURL(doc.ipfsHash));
@@ -411,6 +589,19 @@ const AccessCenter = () => {
     if (state === "request_expired") return <Chip color="danger" variant="flat" size="sm">Expired</Chip>;
     if (state === "no_pass") return <Chip color="default" variant="flat" size="sm">No Pass</Chip>;
     return <Chip color="primary" variant="flat" size="sm">Can Request</Chip>;
+  };
+
+  const inboxStatusChip = (status: InboxKeyStatus) => {
+    if (status === "ready") {
+      return <Chip color="success" variant="flat" size="sm">Ready</Chip>;
+    }
+    if (status === "awaiting_approval") {
+      return <Chip color="warning" variant="flat" size="sm">Awaiting Approval</Chip>;
+    }
+    if (status === "wrong_contract") {
+      return <Chip color="danger" variant="flat" size="sm">Wrong Contract</Chip>;
+    }
+    return <Chip color="danger" variant="flat" size="sm">Wrong Network</Chip>;
   };
 
   if (!isConnected) {
@@ -476,6 +667,14 @@ const AccessCenter = () => {
           >
             Import Beneficiary Package
           </Button>
+          <Button
+            className={`${buttonClasses.outlineMd} w-full sm:w-auto`}
+            startContent={<FiDownload />}
+            isLoading={fetchingInboxKeys}
+            onPress={handleFetchInboxKeys}
+          >
+            Fetch Inbox Keys
+          </Button>
         </div>
       </div>
 
@@ -502,6 +701,49 @@ const AccessCenter = () => {
         </Card>
       </div>
 
+      <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+        <CardBody className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">Inbox Keys</p>
+              <p className="text-lg font-semibold">{inboxEnvelopeCount} envelope{inboxEnvelopeCount === 1 ? "" : "s"} found</p>
+            </div>
+            <Button
+              className={buttonClasses.outlineSm}
+              isLoading={fetchingInboxKeys}
+              onPress={handleFetchInboxKeys}
+            >
+              Refresh Inbox
+            </Button>
+          </div>
+          {inboxPreviewItems.length > 0 ? (
+            <div className="space-y-2">
+              {inboxPreviewItems.map((item) => (
+                <div
+                  key={`${item.documentId}-${item.issuedAt}-${item.status}`}
+                  className="rounded-xl border border-gray-800/80 bg-gray-900/55 px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                >
+                  <div className="text-sm">
+                    <p className="font-medium">Document #{item.documentId}</p>
+                    <p className="text-xs text-gray-400">{item.vaultName}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {item.issuedAt ? (
+                      <span className="text-xs text-gray-500">{new Date(item.issuedAt).toLocaleString()}</span>
+                    ) : null}
+                    {inboxStatusChip(item.status)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Click "Fetch Inbox Keys" to see which documents have shared keys.
+            </p>
+          )}
+        </CardBody>
+      </Card>
+
       <div className="flex flex-col sm:flex-row gap-4">
         <Input
           placeholder="Search by name, vault, or hash..."
@@ -510,6 +752,16 @@ const AccessCenter = () => {
           onValueChange={setSearch}
           className="flex-1"
         />
+        {(hasVaultFilter || accessibleOnly) && (
+          <Button
+            className={buttonClasses.ghostMd}
+            onPress={() => {
+              setSearchParams({});
+            }}
+          >
+            Clear Filter
+          </Button>
+        )}
       </div>
 
       <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
@@ -530,6 +782,14 @@ const AccessCenter = () => {
                   : "-";
                 const canRequest = item.state === "can_request" || item.state === "request_expired" || item.state === "request_rejected";
                 const canDecrypt = item.state === "ready";
+                const isApprovedState = item.state === "ready" || item.state === "approved_key_missing";
+                const needsKeyImport = item.state === "approved_key_missing";
+                const requestActionLabel =
+                  item.state === "request_pending"
+                    ? "Pending"
+                    : item.state === "no_pass"
+                        ? "Need Pass"
+                        : "Request Access";
                 const vaultName = vaultNameById[item.doc.vaultId] || `Vault #${item.doc.vaultId}`;
 
                 return (
@@ -547,15 +807,26 @@ const AccessCenter = () => {
                     <TableCell>{requestText}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Button
-                          size="sm"
-                          className={buttonClasses.outlineSm}
-                          isDisabled={!canRequest || requestingDocId === item.doc.id}
-                          isLoading={requestingDocId === item.doc.id}
-                          onPress={() => handleRequestAccess(item.doc.id)}
-                        >
-                          {item.state === "request_pending" ? "Pending" : "Request Access"}
-                        </Button>
+                        {!isApprovedState && (
+                          <Button
+                            size="sm"
+                            className={buttonClasses.outlineSm}
+                            isDisabled={!canRequest || requestingDocId === item.doc.id}
+                            isLoading={requestingDocId === item.doc.id}
+                            onPress={() => handleRequestAccess(item.doc.id)}
+                          >
+                            {requestActionLabel}
+                          </Button>
+                        )}
+                        {needsKeyImport && (
+                          <Button
+                            size="sm"
+                            className={buttonClasses.outlineSm}
+                            onPress={() => keyImportInputRef.current?.click()}
+                          >
+                            Import Key
+                          </Button>
+                        )}
                         <Button
                           isIconOnly
                           variant="light"
@@ -589,7 +860,7 @@ const AccessCenter = () => {
         <div>
           <p className="font-medium text-gray-200">Flow reminder</p>
           <p className="text-gray-400">
-            Beneficiary needs all three: vault pass NFT, guardian-approved request, and imported key package.
+            Beneficiary needs vault pass NFT + guardian-approved request + key (Fetch Inbox Keys or import package).
           </p>
         </div>
       </div>
