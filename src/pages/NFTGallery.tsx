@@ -481,7 +481,7 @@ const NFTGallery = () => {
           <CardBody className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm">Pass Supply</p>
+                <p className="text-gray-400 text-sm">Network Pass Supply</p>
                 <p className="text-2xl font-bold">{totalSupply}</p>
               </div>
               <div className="p-3 rounded-lg bg-green-500/20">
