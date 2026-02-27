@@ -162,6 +162,45 @@ const LandingPage = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (showSplash) return;
+
+    const revealTargets = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-reveal]")
+    );
+
+    if (revealTargets.length === 0) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      revealTargets.forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+
+    revealTargets.forEach((el) => {
+      const delay = Number(el.dataset.revealDelay || "0");
+      el.style.setProperty("--reveal-delay", `${Math.max(delay, 0)}ms`);
+    });
+
+    const revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          revealObserver.unobserve(entry.target);
+        });
+      },
+      {
+        threshold: 0.16,
+        rootMargin: "0px 0px -8% 0px",
+      }
+    );
+
+    revealTargets.forEach((el) => revealObserver.observe(el));
+
+    return () => revealObserver.disconnect();
+  }, [showSplash]);
+
   if (showSplash) {
     return (
       <div className="landing-splash min-h-screen w-full max-w-[100vw] overflow-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
@@ -188,11 +227,13 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="landing-page min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
+    <div className="landing-page landing-main-fade min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
       <div className="absolute inset-0 -z-10 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-brand-700/15 blur-3xl" />
-        <div className="absolute top-64 -left-20 h-64 w-64 rounded-full bg-brand-900/20 blur-3xl" />
-        <div className="absolute bottom-10 -right-16 h-72 w-72 rounded-full bg-brand-700/10 blur-3xl" />
+        <div className="landing-grid-overlay" />
+        <div className="landing-scanline-overlay" />
+        <div className="landing-web3-aurora landing-web3-aurora--top" />
+        <div className="landing-web3-aurora landing-web3-aurora--mid" />
+        <div className="landing-web3-aurora landing-web3-aurora--bottom" />
       </div>
 
       {isMenuOpen && (
@@ -320,14 +361,9 @@ const LandingPage = () => {
       </div>
       <div className="h-[96px] sm:h-[108px]" aria-hidden="true" />
 
-      <section id="hero" className="relative px-4 sm:px-6 lg:px-8 pt-10 sm:pt-16 pb-14 sm:pb-20">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden -z-10">
-          <div className="hidden sm:block golden-orbit absolute right-[-72px] top-10 w-52 h-52 sm:right-[-44px] sm:top-6 sm:w-72 sm:h-72 opacity-75">
-            <div className="w-full h-full rounded-full bg-gradient-to-br from-amber-100/10 via-brand-500/12 to-transparent" />
-          </div>
-        </div>
+      <section id="hero" className="landing-section relative px-4 sm:px-6 lg:px-8 pt-10 sm:pt-16 pb-14 sm:pb-20">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-start">
-          <div>
+          <div className="reveal-on-scroll" data-reveal data-reveal-delay="40">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
               Protect Family Documents
               <span className="block text-brand-400">While You Live and Beyond</span>
@@ -364,22 +400,22 @@ const LandingPage = () => {
             </div>
 
             <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4">
+              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4" data-reveal data-reveal-delay="140">
                 <p className="text-xl font-semibold">AES-256</p>
                 <p className="text-xs text-gray-400 mt-1">Client-side encryption</p>
               </div>
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4">
+              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4" data-reveal data-reveal-delay="190">
                 <p className="text-xl font-semibold">Multi-Sig</p>
                 <p className="text-xs text-gray-400 mt-1">Guardian approvals</p>
               </div>
-              <div className="rounded-2xl border border-gray-800 bg-gray-900/35 p-4 col-span-2 sm:col-span-1">
+              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4 col-span-2 sm:col-span-1" data-reveal data-reveal-delay="240">
                 <p className="text-xl font-semibold">ERC-721</p>
                 <p className="text-xs text-gray-400 mt-1">Beneficiary access passes</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-800 bg-gradient-to-b from-gray-900/70 to-gray-950/90 p-5 sm:p-6 shadow-2xl shadow-black/30">
+          <div className="reveal-on-scroll rounded-3xl border border-gray-800 bg-gradient-to-b from-gray-900/70 to-gray-950/90 p-5 sm:p-6 shadow-2xl shadow-black/30" data-reveal data-reveal-delay="100">
             <div className="mb-4">
               <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
                 <FiClock className="text-brand-400" />
@@ -390,11 +426,13 @@ const LandingPage = () => {
             <h2 className="text-2xl sm:text-3xl font-semibold leading-tight">How Access Release Works</h2>
             <p className="text-sm text-gray-400 mt-2 mb-5">Designed for everyday sharing, emergencies, and inheritance planning.</p>
 
-            <div className="space-y-3 sm:space-y-4">
-              {workflowCards.map((card) => (
+            <div className="hero-workflow-cards">
+              {workflowCards.map((card, idx) => (
                 <div
                   key={card.step}
-                  className="rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5 transition-colors hover:border-brand-700/40"
+                  className="hero-workflow-card landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5 transition-colors hover:border-brand-700/40"
+                  data-reveal
+                  data-reveal-delay={String(200 + idx * 60)}
                 >
                   <div className="w-9 h-9 rounded-xl bg-brand-700/20 border border-brand-700/40 text-brand-300 text-xs font-semibold flex items-center justify-center mb-3">
                     {card.step}
@@ -408,9 +446,9 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <section id="features" className="px-4 sm:px-6 lg:px-8 py-12 sm:py-16 border-y border-gray-800/50 bg-gray-950/25">
+      <section id="features" className="landing-section px-4 sm:px-6 lg:px-8 py-12 sm:py-16 border-y border-gray-800/50 bg-gray-950/25">
         <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl">
+          <div className="max-w-3xl reveal-on-scroll" data-reveal data-reveal-delay="20">
             <p className="text-sm text-brand-400 font-medium tracking-wide">CORE CAPABILITIES</p>
             <h2 className="text-3xl sm:text-4xl font-bold mt-2">Infrastructure for Living and Inheritance Access</h2>
             <p className="text-gray-400 mt-4">
@@ -418,9 +456,14 @@ const LandingPage = () => {
             </p>
           </div>
 
-          <div className="mt-8 grid md:grid-cols-3 gap-5 sm:gap-6">
-            {featureCards.map((feature) => (
-              <div key={feature.title} className="rounded-3xl border border-gray-800 bg-gray-900/40 p-6">
+          <div className="mt-8 feature-card-track">
+            {featureCards.map((feature, idx) => (
+              <div
+                key={feature.title}
+                className="feature-card-item landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/40 p-6"
+                data-reveal
+                data-reveal-delay={String(70 + idx * 70)}
+              >
                 <div className="w-11 h-11 rounded-xl bg-brand-700/20 border border-brand-700/30 flex items-center justify-center text-brand-300 mb-4">
                   {feature.icon}
                 </div>
@@ -440,9 +483,9 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <section id="workflow" className="px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+      <section id="workflow" className="landing-section px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-6 sm:gap-8 items-start">
-          <div className="rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8">
+          <div className="landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="30">
             <p className="text-sm text-brand-400 font-medium">WORKFLOW</p>
             <h2 className="text-3xl font-bold mt-2">Built for Real Family Continuity</h2>
             <p className="text-gray-400 mt-3">
@@ -466,7 +509,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div id="security" className="rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8">
+          <div id="security" className="landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="80">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl bg-brand-700/20 border border-brand-700/30 flex items-center justify-center text-brand-300">
                 <FiFileText className="text-xl" />
@@ -477,8 +520,13 @@ const LandingPage = () => {
               </div>
             </div>
             <div className="space-y-4">
-              {securityItems.map((item) => (
-                <div key={item.title} className="rounded-2xl border border-gray-800 bg-gray-900/55 p-4">
+              {securityItems.map((item, idx) => (
+                <div
+                  key={item.title}
+                  className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/55 p-4"
+                  data-reveal
+                  data-reveal-delay={String(130 + idx * 60)}
+                >
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">{item.icon}</div>
                     <div>
@@ -493,8 +541,8 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <section className="px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20">
-        <div className="max-w-5xl mx-auto rounded-3xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-900/45 p-8 sm:p-10 text-center">
+      <section className="landing-section px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20">
+        <div className="landing-card reveal-on-scroll max-w-5xl mx-auto rounded-3xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-900/45 p-8 sm:p-10 text-center" data-reveal data-reveal-delay="20">
           <p className="text-sm text-brand-400 font-medium">READY FOR REAL-WORLD USE</p>
           <h2 className="text-3xl sm:text-4xl font-bold mt-2">Deploy a Theft-Resistant Access Platform</h2>
           <p className="text-gray-400 mt-3 max-w-2xl mx-auto">
