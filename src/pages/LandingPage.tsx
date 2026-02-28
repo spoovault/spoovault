@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { UIEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
   Navbar,
@@ -18,25 +18,34 @@ import {
 import { Link } from "react-router-dom";
 import { getCurrentYear } from "../utils/helpers";
 import { buttonClasses } from "../utils/buttonClasses";
+import BrandLogo from "../components/BrandLogo";
 
-const AvalancheLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
-  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
-    <circle cx="32" cy="32" r="32" fill="#E84142" />
-    <path
-      fill="#FFFFFF"
-      d="M34.6 14.1c-1.2-2.1-4.2-2.1-5.4 0L15.6 37.8c-1.2 2.1.3 4.8 2.7 4.8h7.4c1.2 0 2.3-.7 2.9-1.8l10.2-17.7c.6-1.1.6-2.4 0-3.5l-4.2-5.5z"
-    />
-    <path
-      fill="#FFFFFF"
-      d="M43.5 29.2c-1.2-2.1-4.2-2.1-5.4 0l-3.7 6.4c-1.2 2.1.3 4.8 2.7 4.8h7.3c2.4 0 3.9-2.7 2.7-4.8l-3.6-6.4z"
-    />
-  </svg>
-);
+const HEADLINE_TYPING_TEXT = "Live and Beyond";
+type MobileSliderKey = "kpi" | "workflow" | "features";
 
 const LandingPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeNav, setActiveNav] = useState("#hero");
   const [showSplash, setShowSplash] = useState(true);
+  const [isHeaderElevated, setIsHeaderElevated] = useState(false);
+  const [activeMobileSlide, setActiveMobileSlide] = useState<Record<MobileSliderKey, number>>({
+    kpi: 0,
+    workflow: 0,
+    features: 0,
+  });
+  const landingVariantClass = (() => {
+    const param = new URLSearchParams(window.location.search).get("lp");
+    if (param === "1") return "landing-variant-01";
+    if (param === "3") return "landing-variant-03";
+    return "landing-variant-02";
+  })();
+  const [typedHeadline, setTypedHeadline] = useState("");
+  const [isTypingComplete, setIsTypingComplete] = useState(false);
+  const sliderRafRef = useRef<Partial<Record<MobileSliderKey, number>>>({});
+  const lastKpiInteractionRef = useRef(0);
+  const kpiSliderRef = useRef<HTMLDivElement | null>(null);
+  const workflowSliderRef = useRef<HTMLDivElement | null>(null);
+  const featureSliderRef = useRef<HTMLDivElement | null>(null);
 
   const navItems = [
     { label: "Overview", href: "#hero" },
@@ -84,6 +93,12 @@ const LandingPage = () => {
     },
   ];
 
+  const kpiCards = [
+    { title: "AES-256", subtitle: "Client-side encryption" },
+    { title: "Multi-Sig", subtitle: "Guardian approvals" },
+    { title: "ERC-721", subtitle: "Beneficiary access passes" },
+  ];
+
   const securityItems = [
     {
       icon: <FiCheckCircle className="text-brand-400" />,
@@ -109,6 +124,69 @@ const LandingPage = () => {
 
   const headerTabClass =
     "h-9 px-4 rounded-full text-[13px] sm:text-[14px] font-semibold transition-all duration-300 inline-flex items-center";
+
+  const refreshSliderIndex = useCallback(
+    (key: MobileSliderKey, track: HTMLDivElement | null) => {
+      if (!track || window.innerWidth >= 768) return;
+
+      const slides = Array.from(track.querySelectorAll<HTMLElement>("[data-slider-item]"));
+      if (slides.length === 0) return;
+
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      slides.forEach((slide, idx) => {
+        const distance = Math.abs(slide.offsetLeft - track.scrollLeft);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = idx;
+        }
+      });
+
+      setActiveMobileSlide((previous) =>
+        previous[key] === nearestIndex ? previous : { ...previous, [key]: nearestIndex }
+      );
+    },
+    []
+  );
+
+  const handleSliderScroll = useCallback(
+    (key: MobileSliderKey) => (event: UIEvent<HTMLDivElement>) => {
+      if (window.innerWidth >= 768) return;
+      if (key === "kpi") {
+        lastKpiInteractionRef.current = Date.now();
+      }
+
+      const existingRaf = sliderRafRef.current[key];
+      if (typeof existingRaf === "number") {
+        window.cancelAnimationFrame(existingRaf);
+      }
+
+      const track = event.currentTarget;
+      sliderRafRef.current[key] = window.requestAnimationFrame(() => {
+        refreshSliderIndex(key, track);
+      });
+    },
+    [refreshSliderIndex]
+  );
+
+  const scrollSliderToIndex = useCallback((key: MobileSliderKey, index: number) => {
+    const track =
+      key === "kpi"
+        ? kpiSliderRef.current
+        : key === "workflow"
+        ? workflowSliderRef.current
+        : featureSliderRef.current;
+    if (!track) return;
+    const slides = Array.from(track.querySelectorAll<HTMLElement>("[data-slider-item]"));
+    const target = slides[index];
+    if (!target) return;
+    track.scrollTo({ left: target.offsetLeft, behavior: "smooth" });
+    setActiveMobileSlide((previous) => ({ ...previous, [key]: index }));
+    if (key === "kpi") {
+      lastKpiInteractionRef.current = Date.now();
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -201,9 +279,96 @@ const LandingPage = () => {
     return () => revealObserver.disconnect();
   }, [showSplash]);
 
+  useEffect(() => {
+    if (showSplash) return;
+    setTypedHeadline("");
+    setIsTypingComplete(false);
+  }, [showSplash]);
+
+  useEffect(() => {
+    if (showSplash) return;
+
+    if (window.innerWidth < 768) {
+      kpiSliderRef.current?.scrollTo({ left: 0, behavior: "auto" });
+      workflowSliderRef.current?.scrollTo({ left: 0, behavior: "auto" });
+      featureSliderRef.current?.scrollTo({ left: 0, behavior: "auto" });
+      setActiveMobileSlide({ kpi: 0, workflow: 0, features: 0 });
+    }
+
+    const syncSliderState = () => {
+      refreshSliderIndex("kpi", kpiSliderRef.current);
+      refreshSliderIndex("workflow", workflowSliderRef.current);
+      refreshSliderIndex("features", featureSliderRef.current);
+    };
+
+    syncSliderState();
+    window.addEventListener("resize", syncSliderState);
+
+    return () => {
+      window.removeEventListener("resize", syncSliderState);
+    };
+  }, [showSplash, refreshSliderIndex]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(sliderRafRef.current).forEach((rafId) => {
+        if (typeof rafId === "number") {
+          window.cancelAnimationFrame(rafId);
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showSplash || isTypingComplete) return;
+    const isComplete = typedHeadline === HEADLINE_TYPING_TEXT;
+
+    const timer = window.setTimeout(() => {
+      if (isComplete) {
+        setTypedHeadline(HEADLINE_TYPING_TEXT);
+        setIsTypingComplete(true);
+        return;
+      }
+
+      setTypedHeadline(HEADLINE_TYPING_TEXT.slice(0, typedHeadline.length + 1));
+    }, isComplete ? 120 : 18);
+
+    return () => window.clearTimeout(timer);
+  }, [showSplash, isTypingComplete, typedHeadline]);
+
+  useEffect(() => {
+    if (showSplash) return;
+
+    const interval = window.setInterval(() => {
+      if (window.innerWidth >= 768) return;
+      if (Date.now() - lastKpiInteractionRef.current < 2200) return;
+
+      setActiveMobileSlide((previous) => {
+        const nextKpi = (previous.kpi + 1) % kpiCards.length;
+        scrollSliderToIndex("kpi", nextKpi);
+        return { ...previous, kpi: nextKpi };
+      });
+    }, 3200);
+
+    return () => window.clearInterval(interval);
+  }, [showSplash, kpiCards.length, scrollSliderToIndex]);
+
+  useEffect(() => {
+    if (showSplash) return;
+
+    const onScroll = () => {
+      setIsHeaderElevated(window.scrollY > 10);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [showSplash]);
+
   if (showSplash) {
     return (
-      <div className="landing-splash min-h-screen w-full max-w-[100vw] overflow-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
+      <div className={`landing-splash ${landingVariantClass} min-h-screen w-full max-w-[100vw] overflow-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100`}>
         <div className="landing-splash__bg">
           <div className="landing-splash__blur landing-splash__blur--top" />
           <div className="landing-splash__blur landing-splash__blur--left" />
@@ -216,7 +381,7 @@ const LandingPage = () => {
             <div className="landing-splash__ring landing-splash__ring--mid" />
             <div className="landing-splash__ring landing-splash__ring--inner" />
             <div className="landing-splash__logo-shell">
-              <AvalancheLogo className="landing-splash__logo" />
+              <BrandLogo className="landing-splash__logo" />
             </div>
           </div>
           <h1 className="landing-splash__title">SpooVault</h1>
@@ -227,8 +392,8 @@ const LandingPage = () => {
   }
 
   return (
-    <div className="landing-page landing-main-fade min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100">
-      <div className="absolute inset-0 -z-10 pointer-events-none">
+    <div className={`landing-page landing-web3 ${landingVariantClass} flex min-h-screen flex-col w-full max-w-[100vw] overflow-x-hidden bg-gradient-to-b from-[#040306] via-gray-950 to-[#040306] text-gray-100`}>
+      <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden">
         <div className="landing-grid-overlay" />
         <div className="landing-scanline-overlay" />
         <div className="landing-web3-aurora landing-web3-aurora--top" />
@@ -245,12 +410,12 @@ const LandingPage = () => {
         />
       )}
 
-      <div className="md:hidden fixed left-1/2 -translate-x-1/2 top-4 z-50 w-[calc(100vw-1.5rem)] max-w-[30rem]">
+      <div className={`landing-fixed-top md:hidden fixed inset-x-3 top-4 z-50 mx-auto max-w-[30rem]${isHeaderElevated ? " is-elevated" : ""}`}>
         <div className="relative">
-          <div className="w-full h-[4.5rem] rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)] px-4 flex items-center gap-3">
+          <div className="landing-mobile-header-bar w-full h-[4.5rem] rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)] px-4 flex items-center gap-3">
             <Link to="/" className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden" onClick={() => setIsMenuOpen(false)}>
               <div className="w-9 h-9 rounded-xl bg-white/5 border border-gray-700/60 flex items-center justify-center shadow-lg shadow-brand-900/20 flex-shrink-0">
-                <AvalancheLogo className="w-5 h-5" />
+                <BrandLogo className="w-5 h-5" />
               </div>
               <div className="min-w-0">
                 <h1 className="text-[15px] font-bold leading-none truncate">SpooVault</h1>
@@ -271,7 +436,7 @@ const LandingPage = () => {
               isMenuOpen ? "max-h-[420px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
             }`}
           >
-            <div className="w-full rounded-2xl border border-gray-800/80 bg-gray-950/95 backdrop-blur-2xl p-2 shadow-[0_22px_32px_-24px_rgba(0,0,0,0.95)]">
+            <div className="landing-mobile-menu-panel w-full rounded-2xl border border-gray-800/80 bg-gray-950/95 backdrop-blur-2xl p-2 shadow-[0_22px_32px_-24px_rgba(0,0,0,0.95)]">
               <nav className="space-y-1">
                 {navItems.map((item) => (
                   <a
@@ -306,17 +471,17 @@ const LandingPage = () => {
         </div>
       </div>
 
-      <div className="hidden md:block fixed inset-x-0 top-5 z-50 px-6 lg:px-8">
+      <div className={`landing-fixed-top hidden md:block fixed inset-x-0 top-5 z-50 px-6 lg:px-8${isHeaderElevated ? " is-elevated" : ""}`}>
         <div className="w-full max-w-7xl mx-auto">
         <Navbar
-          className="rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)]"
+          className="landing-desktop-nav rounded-2xl border border-gray-800/70 bg-gray-950/82 backdrop-blur-2xl shadow-[0_18px_36px_-26px_rgba(0,0,0,0.95)]"
           maxWidth="full"
           height="4.5rem"
         >
         <NavbarContent justify="start" className="gap-3">
           <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/5 border border-gray-700/60 flex items-center justify-center shadow-lg shadow-brand-900/20">
-              <AvalancheLogo className="w-6 h-6" />
+              <BrandLogo className="w-6 h-6" />
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold">SpooVault</h1>
@@ -359,30 +524,41 @@ const LandingPage = () => {
         </Navbar>
         </div>
       </div>
-      <div className="h-[96px] sm:h-[108px]" aria-hidden="true" />
+      <div className="landing-main-fade flex-1">
+      <div className="h-[96px] sm:h-[104px]" aria-hidden="true" />
 
-      <section id="hero" className="landing-section relative px-4 sm:px-6 lg:px-8 pt-10 sm:pt-16 pb-14 sm:pb-20">
+      <section id="hero" className="landing-section relative px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 pb-14 sm:pb-20">
+        <div className="landing-hero-stage">
+        <div className="landing-hero-edge landing-hero-edge--left" />
+        <div className="landing-hero-edge landing-hero-edge--right" />
+        <div className="landing-hero-beam" />
         <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-start">
-          <div className="reveal-on-scroll" data-reveal data-reveal-delay="40">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
-              Protect Family Documents
-              <span className="block text-brand-400">While You Live and Beyond</span>
+          <div className="landing-hero-copy reveal-on-scroll" data-reveal data-reveal-delay="40">
+            <h1 className="landing-hero-title text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
+              <span className="landing-hero-line landing-hero-line--primary">Protect Family Documents</span>
+              <span className="landing-hero-line landing-hero-line--accent text-brand-400">
+                While You{" "}
+                <span className="landing-typewriter" aria-live="polite">
+                  {typedHeadline || " "}
+                  <span className={`landing-type-caret${isTypingComplete ? " is-hidden" : ""}`} />
+                </span>
+              </span>
             </h1>
 
-            <p className="mt-4 text-xs sm:text-sm text-gray-400 tracking-wide">
-              Avalanche Fuji • AES-256 • Multi-Sig
+            <p className="landing-hero-meta mt-4 text-xs sm:text-sm text-gray-400 tracking-wide">
+              Avalanche Fuji {"\u2022"} AES-256 {"\u2022"} Multi-Sig
             </p>
 
-            <p className="mt-4 text-base sm:text-lg text-gray-400 max-w-2xl leading-relaxed">
+            <p className="landing-hero-description mt-4 text-base sm:text-lg text-gray-400 max-w-2xl leading-relaxed">
               SpooVault secures critical documents for everyday control while you&apos;re alive, with
               guardian-governed emergency and inheritance release when needed.
             </p>
 
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <div className="landing-hero-actions mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
               <span className="golden-button-orbit inline-flex w-full max-w-full sm:w-auto">
                 <Link to="/dashboard" className="block w-full sm:w-auto">
                   <Button
-                    className={`w-full sm:w-auto ${solidButtonClass}`}
+                    className={`w-full sm:w-auto text-sm font-semibold tracking-[0.01em] ${solidButtonClass}`}
                     endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
                   >
                     Start Secure Vault
@@ -391,31 +567,56 @@ const LandingPage = () => {
               </span>
               <a href="#workflow" className="w-full sm:w-auto">
                 <Button
-                  className={`w-full sm:w-auto ${outlineButtonClass}`}
-                  endContent={<FiArrowRight className="text-[16px] transition-transform duration-300 group-hover:translate-x-1" />}
+                  className={`w-full sm:w-auto text-sm font-semibold tracking-[0.01em] !text-red-100 ${outlineButtonClass}`}
+                  endContent={<FiArrowRight className="text-[16px] text-red-100 transition-transform duration-300 group-hover:translate-x-1" />}
                 >
                   View Access Flow
                 </Button>
               </a>
             </div>
 
-            <div className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4" data-reveal data-reveal-delay="140">
-                <p className="text-xl font-semibold">AES-256</p>
-                <p className="text-xs text-gray-400 mt-1">Client-side encryption</p>
-              </div>
-              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4" data-reveal data-reveal-delay="190">
-                <p className="text-xl font-semibold">Multi-Sig</p>
-                <p className="text-xs text-gray-400 mt-1">Guardian approvals</p>
-              </div>
-              <div className="landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4 col-span-2 sm:col-span-1" data-reveal data-reveal-delay="240">
-                <p className="text-xl font-semibold">ERC-721</p>
-                <p className="text-xs text-gray-400 mt-1">Beneficiary access passes</p>
-              </div>
+            <div
+              ref={kpiSliderRef}
+              onScroll={handleSliderScroll("kpi")}
+              onTouchStart={() => {
+                lastKpiInteractionRef.current = Date.now();
+              }}
+              onMouseDown={() => {
+                lastKpiInteractionRef.current = Date.now();
+              }}
+              className="mt-8 grid grid-cols-2 sm:grid-cols-3 gap-3 hero-kpi-track"
+            >
+              {kpiCards.map((card, idx) => (
+                <div
+                  key={card.title}
+                  data-slider-item
+                  className={`hero-kpi-item landing-card landing-kpi-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/35 p-4 ${
+                    activeMobileSlide.kpi === idx ? "is-active-mobile-slide" : ""
+                  }`}
+                  data-reveal
+                  data-reveal-delay={String(140 + idx * 50)}
+                >
+                  <p className="text-xl font-semibold">{card.title}</p>
+                  <p className="text-xs text-gray-400 mt-1">{card.subtitle}</p>
+                </div>
+              ))}
             </div>
+            <div className="mobile-slider-dots" aria-label="KPI slider progress">
+              {kpiCards.map((card, idx) => (
+                <button
+                  key={card.title}
+                  type="button"
+                  aria-label={`Show ${card.title} card`}
+                  onClick={() => scrollSliderToIndex("kpi", idx)}
+                  className={`mobile-slider-dot${activeMobileSlide.kpi === idx ? " is-active" : ""}`}
+                />
+              ))}
+            </div>
+            <p className="mobile-slider-ellipsis" aria-hidden="true">...</p>
+            <p className="mobile-slider-hint">Swipe cards to view all 3 highlights</p>
           </div>
 
-          <div className="reveal-on-scroll rounded-3xl border border-gray-800 bg-gradient-to-b from-gray-900/70 to-gray-950/90 p-5 sm:p-6 shadow-2xl shadow-black/30" data-reveal data-reveal-delay="100">
+          <div className="landing-flow-panel reveal-on-scroll rounded-3xl border border-gray-800 bg-gradient-to-b from-gray-900/70 to-gray-950/90 p-5 sm:p-6 lg:max-h-[calc(100vh-8.8rem)] lg:flex lg:flex-col shadow-2xl shadow-black/30" data-reveal data-reveal-delay="100">
             <div className="mb-4">
               <div className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-400">
                 <FiClock className="text-brand-400" />
@@ -426,27 +627,48 @@ const LandingPage = () => {
             <h2 className="text-2xl sm:text-3xl font-semibold leading-tight">How Access Release Works</h2>
             <p className="text-sm text-gray-400 mt-2 mb-5">Designed for everyday sharing, emergencies, and inheritance planning.</p>
 
-            <div className="hero-workflow-cards">
+            <div
+              ref={workflowSliderRef}
+              onScroll={handleSliderScroll("workflow")}
+              className="hero-workflow-cards landing-flow-scroll"
+            >
               {workflowCards.map((card, idx) => (
                 <div
                   key={card.step}
-                  className="hero-workflow-card landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5 transition-colors hover:border-brand-700/40"
+                  data-slider-item
+                  className={`hero-workflow-card landing-flow-step landing-card reveal-on-scroll rounded-2xl border border-gray-800 bg-gray-900/60 p-4 sm:p-5 lg:p-4 transition-colors hover:border-brand-700/40 ${
+                    activeMobileSlide.workflow === idx ? "is-active-mobile-slide" : ""
+                  }`}
                   data-reveal
                   data-reveal-delay={String(200 + idx * 60)}
                 >
                   <div className="w-9 h-9 rounded-xl bg-brand-700/20 border border-brand-700/40 text-brand-300 text-xs font-semibold flex items-center justify-center mb-3">
                     {card.step}
                   </div>
-                  <h3 className="text-lg font-semibold mb-1">{card.title}</h3>
-                  <p className="text-sm text-gray-400">{card.text}</p>
+                  <h3 className="text-lg lg:text-[1.02rem] font-semibold mb-1">{card.title}</h3>
+                  <p className="text-sm lg:text-[0.87rem] lg:leading-relaxed text-gray-400">{card.text}</p>
                 </div>
               ))}
             </div>
+            <div className="mobile-slider-dots" aria-label="Workflow slider progress">
+              {workflowCards.map((card, idx) => (
+                <button
+                  key={card.step}
+                  type="button"
+                  aria-label={`Show workflow step ${idx + 1}`}
+                  onClick={() => scrollSliderToIndex("workflow", idx)}
+                  className={`mobile-slider-dot${activeMobileSlide.workflow === idx ? " is-active" : ""}`}
+                />
+              ))}
+            </div>
+            <p className="mobile-slider-ellipsis" aria-hidden="true">...</p>
+            <p className="mobile-slider-hint">Swipe to review all release steps</p>
           </div>
+        </div>
         </div>
       </section>
 
-      <section id="features" className="landing-section px-4 sm:px-6 lg:px-8 py-12 sm:py-16 border-y border-gray-800/50 bg-gray-950/25">
+      <section id="features" className="landing-section landing-feature-section px-4 sm:px-6 lg:px-8 py-12 sm:py-16 border-y border-gray-800/50 bg-gray-950/25">
         <div className="max-w-7xl mx-auto">
           <div className="max-w-3xl reveal-on-scroll" data-reveal data-reveal-delay="20">
             <p className="text-sm text-brand-400 font-medium tracking-wide">CORE CAPABILITIES</p>
@@ -456,11 +678,18 @@ const LandingPage = () => {
             </p>
           </div>
 
-          <div className="mt-8 feature-card-track">
+          <div
+            ref={featureSliderRef}
+            onScroll={handleSliderScroll("features")}
+            className="mt-8 feature-card-track"
+          >
             {featureCards.map((feature, idx) => (
               <div
                 key={feature.title}
-                className="feature-card-item landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/40 p-6"
+                data-slider-item
+                className={`feature-card-item landing-feature-card landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/40 p-6 ${
+                  activeMobileSlide.features === idx ? "is-active-mobile-slide" : ""
+                }`}
                 data-reveal
                 data-reveal-delay={String(70 + idx * 70)}
               >
@@ -480,12 +709,23 @@ const LandingPage = () => {
               </div>
             ))}
           </div>
+          <div className="mobile-slider-dots" aria-label="Feature slider progress">
+            {featureCards.map((feature, idx) => (
+              <button
+                key={feature.title}
+                type="button"
+                aria-label={`Show ${feature.title} feature`}
+                onClick={() => scrollSliderToIndex("features", idx)}
+                className={`mobile-slider-dot${activeMobileSlide.features === idx ? " is-active" : ""}`}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
       <section id="workflow" className="landing-section px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-6 sm:gap-8 items-start">
-          <div className="landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="30">
+          <div className="landing-card landing-workflow-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="30">
             <p className="text-sm text-brand-400 font-medium">WORKFLOW</p>
             <h2 className="text-3xl font-bold mt-2">Built for Real Family Continuity</h2>
             <p className="text-gray-400 mt-3">
@@ -509,7 +749,7 @@ const LandingPage = () => {
             </div>
           </div>
 
-          <div id="security" className="landing-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="80">
+          <div id="security" className="landing-card landing-security-card reveal-on-scroll rounded-3xl border border-gray-800 bg-gray-900/35 p-6 sm:p-8" data-reveal data-reveal-delay="80">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-xl bg-brand-700/20 border border-brand-700/30 flex items-center justify-center text-brand-300">
                 <FiFileText className="text-xl" />
@@ -542,7 +782,7 @@ const LandingPage = () => {
       </section>
 
       <section className="landing-section px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20">
-        <div className="landing-card reveal-on-scroll max-w-5xl mx-auto rounded-3xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-900/45 p-8 sm:p-10 text-center" data-reveal data-reveal-delay="20">
+        <div className="landing-card landing-cta-panel reveal-on-scroll max-w-5xl mx-auto rounded-3xl border border-gray-800 bg-gradient-to-r from-gray-900/80 to-gray-900/45 p-8 sm:p-10 text-center" data-reveal data-reveal-delay="20">
           <p className="text-sm text-brand-400 font-medium">READY FOR REAL-WORLD USE</p>
           <h2 className="text-3xl sm:text-4xl font-bold mt-2">Deploy a Theft-Resistant Access Platform</h2>
           <p className="text-gray-400 mt-3 max-w-2xl mx-auto">
@@ -571,11 +811,13 @@ const LandingPage = () => {
         </div>
       </section>
 
-      <footer className="border-t border-gray-800/60 px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+      </div>
+
+      <footer className="landing-footer shrink-0 border-t border-gray-800/60 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-white/5 border border-gray-700/60 flex items-center justify-center">
-              <AvalancheLogo className="w-4 h-4" />
+              <BrandLogo className="w-4 h-4" />
             </div>
             <div>
               <p className="text-sm font-semibold">SpooVault</p>
@@ -590,3 +832,6 @@ const LandingPage = () => {
 };
 
 export default LandingPage;
+
+
+

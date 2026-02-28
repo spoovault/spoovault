@@ -348,10 +348,10 @@ const Vaults = () => {
 
   if (!isConnected) {
     return (
-      <div className="space-y-8">
-        <div className="rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-8 text-center">
+      <div className="min-h-[calc(100vh-11rem)] flex items-center justify-center">
+        <div className="w-full max-w-4xl rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-brand-700 to-brand-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiZap className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Connect Your Wallet</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -372,8 +372,8 @@ const Vaults = () => {
 
   if (!isFujiNetwork) {
     return (
-      <div className="space-y-8">
-        <div className="rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
+      <div className="min-h-[calc(100vh-11rem)] flex items-center justify-center">
+        <div className="w-full max-w-4xl rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <FiShield className="text-white text-3xl" />
           </div>

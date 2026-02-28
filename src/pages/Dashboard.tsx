@@ -15,9 +15,9 @@ import {
   FiKey,
   FiActivity,
   FiTrendingUp,
-  FiPlus,
   FiArrowUpRight,
   FiAlertCircle,
+  FiZap,
   FiClock,
   FiCheckCircle,
   FiCircle,
@@ -432,19 +432,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleCreateVault = () => {
-    if (!isConnected) {
-      toast.error("Please connect your wallet first");
-      connect();
-      return;
-    }
-    if (!isFujiNetwork) {
-      toast.error("Please switch to Avalanche Fuji network");
-      return;
-    }
-    navigate("/vaults?create=true");
-  };
-
   const handleApproveRequest = async (requestId: number) => {
     setApprovingRequestId(requestId);
     try {
@@ -502,12 +489,62 @@ const Dashboard = () => {
     [stats.totalVaults, stats.totalDocuments, issuedPassesForVisibleVaults, packageExported]
   );
 
+  const vaultLabel = stats.totalVaults === 1 ? "vault" : "vaults";
+  const docLabel = stats.totalDocuments === 1 ? "document" : "documents";
+  const guardianLabel = stats.totalGuardians === 1 ? "guardian" : "guardians";
+  const welcomeMessage =
+    stats.totalVaults === 0
+      ? "You have 0 access vaults. Start by creating one to protect your family documents."
+      : `You have ${stats.totalVaults} ${vaultLabel}, ${stats.totalDocuments} ${docLabel}, and ${stats.totalGuardians} ${guardianLabel} in your access workspace.`;
+
+  const statCards: Array<{
+    key: string;
+    value: number;
+    label: string;
+    tag: string;
+    icon: JSX.Element;
+    iconBg: string;
+  }> = [
+    {
+      key: "vaults",
+      value: stats.totalVaults,
+      label: "Access Vaults",
+      tag: "Visible",
+      icon: <FiShield className="text-white text-xl" />,
+      iconBg: "bg-gradient-to-br from-brand-700 to-brand-900",
+    },
+    {
+      key: "documents",
+      value: stats.totalDocuments,
+      label: "Legacy Documents",
+      tag: "Visible",
+      icon: <FiFile className="text-white text-xl" />,
+      iconBg: "bg-gradient-to-br from-blue-500 to-cyan-500",
+    },
+    {
+      key: "guardians",
+      value: stats.totalGuardians,
+      label: "Guardians",
+      tag: "Unique",
+      icon: <FiUsers className="text-white text-xl" />,
+      iconBg: "bg-gradient-to-br from-green-500 to-emerald-500",
+    },
+    {
+      key: "passes",
+      value: stats.totalNFTs,
+      label: "My Access Passes",
+      tag: "Owned",
+      icon: <FiKey className="text-white text-xl" />,
+      iconBg: "bg-gradient-to-br from-purple-500 to-violet-500",
+    },
+  ];
+
   if (!isConnected) {
     return (
-      <div className="space-y-8">
-        <div className="rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-8 text-center">
+      <div className="min-h-[calc(100vh-11rem)] flex items-center justify-center">
+        <div className="w-full max-w-4xl rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-brand-700 to-brand-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiZap className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Welcome to SpooVault</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -537,8 +574,8 @@ const Dashboard = () => {
 
   if (!isFujiNetwork) {
     return (
-      <div className="space-y-8">
-        <div className="rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
+      <div className="min-h-[calc(100vh-11rem)] flex items-center justify-center">
+        <div className="w-full max-w-4xl rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <FiAlertCircle className="text-white text-3xl" />
           </div>
@@ -564,7 +601,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-8">
       <div className="rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-6 lg:p-8">
-        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-6">
+        <div className="flex flex-col gap-6">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-12 h-12 bg-gradient-to-br from-brand-700 to-brand-900 rounded-xl flex items-center justify-center">
@@ -579,18 +616,8 @@ const Dashboard = () => {
               </div>
             </div>
             <p className="text-gray-400">
-              Your access setup is ready. Protect documents now and define emergency or inheritance release rules.
+              {welcomeMessage}
             </p>
-          </div>
-          <div className="w-full sm:w-auto lg:min-w-fit">
-            <Button
-              className={`${buttonClasses.primaryLg} w-full sm:w-auto`}
-              onPress={handleCreateVault}
-              startContent={<FiPlus />}
-              size="lg"
-            >
-              Create Access Vault
-            </Button>
           </div>
         </div>
       </div>
@@ -610,53 +637,20 @@ const Dashboard = () => {
           </>
         ) : (
           <>
-            <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-              <CardBody className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-brand-700 to-brand-900">
-                    <FiShield className="text-white text-xl" />
+            {statCards.map((card) => (
+              <Card key={card.key} className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+                <CardBody className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`p-3 rounded-xl ${card.iconBg}`}>{card.icon}</div>
+                    <span className="text-[11px] uppercase tracking-wider rounded-full px-2 py-1 border border-gray-700/80 text-gray-400 bg-gray-900/65">
+                      {card.tag}
+                    </span>
                   </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-1">{stats.totalVaults}</h3>
-                <p className="text-gray-400 text-sm">Access Vaults</p>
-              </CardBody>
-            </Card>
-
-            <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-              <CardBody className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500">
-                    <FiFile className="text-white text-xl" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-1">{stats.totalDocuments}</h3>
-                <p className="text-gray-400 text-sm">Legacy Documents</p>
-              </CardBody>
-            </Card>
-
-            <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-              <CardBody className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500">
-                    <FiUsers className="text-white text-xl" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-1">{stats.totalGuardians}</h3>
-                <p className="text-gray-400 text-sm">Guardians</p>
-              </CardBody>
-            </Card>
-
-            <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-              <CardBody className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500">
-                    <FiKey className="text-white text-xl" />
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold mb-1">{stats.totalNFTs}</h3>
-                <p className="text-gray-400 text-sm">My Access Passes</p>
-              </CardBody>
-            </Card>
+                  <h3 className="text-2xl font-bold mb-1">{card.value}</h3>
+                  <p className="text-gray-400 text-sm">{card.label}</p>
+                </CardBody>
+              </Card>
+            ))}
           </>
         )}
       </div>
@@ -715,8 +709,32 @@ const Dashboard = () => {
                 ))}
               </div>
             ) : recentActivity.length === 0 ? (
-              <div className="p-6 text-center text-gray-400">
-                No recent activity yet.
+              <div className="p-8 md:p-10 min-h-[20rem] flex items-center justify-center">
+                <div className="max-w-md text-center">
+                  <div className="mx-auto mb-4 w-14 h-14 rounded-2xl border border-gray-700/80 bg-gray-900/70 flex items-center justify-center">
+                    <FiActivity className="text-gray-300 text-xl" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">No recent activity yet</h3>
+                  <p className="text-sm text-gray-400">
+                    Activity will appear after you create a vault, upload a document, mint a pass, or approve a request.
+                  </p>
+                  <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <Button
+                      className={buttonClasses.primarySm}
+                      startContent={<FiShield />}
+                      onPress={() => navigate("/vaults?create=true")}
+                    >
+                      Create First Vault
+                    </Button>
+                    <Button
+                      className={buttonClasses.ghostSm}
+                      startContent={<FiFile />}
+                      onPress={() => navigate("/documents")}
+                    >
+                      Upload Legacy File
+                    </Button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="divide-y divide-gray-800">
@@ -772,46 +790,64 @@ const Dashboard = () => {
               <h2 className="text-xl font-semibold">Quick Actions</h2>
             </CardHeader>
             <CardBody className="space-y-3">
-              <Link to="/vaults">
-                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
-                  <FiShield className="mr-3" />
-                  Create Access Vault
+              <Link to="/vaults?create=true">
+                <Button fullWidth className={`${buttonClasses.primaryMd} !h-12 justify-between`}>
+                  <span className="flex items-center gap-3">
+                    <FiShield />
+                    Create Access Vault
+                  </span>
+                  <FiArrowUpRight className="text-base" />
                 </Button>
               </Link>
               <Link to="/documents">
-                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
-                  <FiFile className="mr-3" />
-                  Upload Legacy File
+                <Button fullWidth className={`${buttonClasses.ghostMd} !h-11 justify-between`}>
+                  <span className="flex items-center gap-3">
+                    <FiFile />
+                    Upload Legacy File
+                  </span>
+                  <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
               </Link>
               <Link to="/nfts">
-                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
-                  <FiKey className="mr-3" />
-                  Mint Beneficiary Pass
+                <Button fullWidth className={`${buttonClasses.ghostMd} !h-11 justify-between`}>
+                  <span className="flex items-center gap-3">
+                    <FiKey />
+                    Mint Beneficiary Pass
+                  </span>
+                  <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
               </Link>
               <Link to="/access">
-                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
-                  <FiUsers className="mr-3" />
-                  Open My Access View
+                <Button fullWidth className={`${buttonClasses.ghostMd} !h-11 justify-between`}>
+                  <span className="flex items-center gap-3">
+                    <FiUsers />
+                    Open My Access View
+                  </span>
+                  <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
               </Link>
-              <Link to="/vaults">
-                <Button fullWidth className={`${buttonClasses.ghostLg} justify-start`}>
-                  <FiUsers className="mr-3" />
-                  Add Guardian
+              <Link to="/vaults?create=true">
+                <Button fullWidth className={`${buttonClasses.ghostMd} !h-11 justify-between`}>
+                  <span className="flex items-center gap-3">
+                    <FiUsers />
+                    Invite Guardians
+                  </span>
+                  <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
               </Link>
+              <p className="text-xs text-gray-500 px-1">
+                Start with vault creation, then upload files and assign guardians from vault setup.
+              </p>
             </CardBody>
           </Card>
 
           <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-            <CardHeader className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FiCheckCircle />
-                <h2 className="text-xl font-semibold">Approval Queue</h2>
+            <CardHeader className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <FiCheckCircle className="mt-0.5 flex-shrink-0" />
+                <h2 className="text-lg font-semibold leading-tight whitespace-nowrap">Approval Queue</h2>
               </div>
-              <Chip size="sm" variant="flat" color="warning">
+              <Chip size="sm" variant="flat" color="warning" className="whitespace-nowrap flex-shrink-0">
                 {pendingApprovals.length} Pending
               </Chip>
             </CardHeader>
@@ -825,7 +861,9 @@ const Dashboard = () => {
                   ))}
                 </>
               ) : pendingApprovals.length === 0 ? (
-                <p className="text-sm text-gray-400">No pending approvals assigned to your guardian account.</p>
+                <div className="rounded-xl border border-gray-800/80 bg-gray-900/45 p-4">
+                  <p className="text-sm text-gray-400">No pending approvals assigned to your guardian account.</p>
+                </div>
               ) : (
                 pendingApprovals.map((item) => (
                   <div key={item.requestId} className="rounded-xl border border-gray-800 bg-gray-900/45 p-3 space-y-2">
@@ -861,11 +899,11 @@ const Dashboard = () => {
       </div>
 
       <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
-          <CardHeader className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FiTrendingUp />
-              <h2 className="text-xl font-semibold">Vault Activity</h2>
-            </div>
+        <CardHeader className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FiTrendingUp />
+            <h2 className="text-xl font-semibold">Vault Activity</h2>
+          </div>
           <Button
             className={buttonClasses.outlineSm}
             startContent={<FiArrowUpRight />}
@@ -889,7 +927,30 @@ const Dashboard = () => {
               ))}
             </div>
           ) : vaults.length === 0 ? (
-            <div className="text-center text-gray-400">No access vaults yet.</div>
+            <div className="rounded-2xl border border-gray-800/80 bg-gray-900/45 p-6 md:p-8">
+              <div className="max-w-xl">
+                <h3 className="text-lg font-semibold mb-2">No access vaults yet</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                  Create your first vault to unlock activity tracking, approvals, and document release history.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    className={buttonClasses.primarySm}
+                    startContent={<FiShield />}
+                    onPress={() => navigate("/vaults?create=true")}
+                  >
+                  Create Access Vault
+                  </Button>
+                  <Button
+                    className={buttonClasses.ghostSm}
+                    startContent={<FiUsers />}
+                    onPress={() => navigate("/vaults?create=true")}
+                  >
+                    Invite Guardians
+                  </Button>
+                </div>
+              </div>
+            </div>
           ) : (
             vaults.map((vault) => {
               const docCount = docCountByVault[vault.id] || 0;

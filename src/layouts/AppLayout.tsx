@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Button,
   Avatar,
+  Tooltip,
 } from "@heroui/react";
 import {
   FiHome,
@@ -12,7 +13,6 @@ import {
   FiUser,
   FiPlus,
   FiZap,
-  FiChevronDown,
   FiMoreHorizontal,
   FiChevronLeft,
   FiChevronRight,
@@ -24,25 +24,12 @@ import { contractService } from "../services/contract.service";
 import { shortenAddress } from "../utils/helpers";
 import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
-
-const AvalancheLogo = ({ className = "w-6 h-6" }: { className?: string }) => (
-  <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
-    <circle cx="32" cy="32" r="32" fill="#E84142" />
-    <path
-      fill="#FFFFFF"
-      d="M34.6 14.1c-1.2-2.1-4.2-2.1-5.4 0L15.6 37.8c-1.2 2.1.3 4.8 2.7 4.8h7.4c1.2 0 2.3-.7 2.9-1.8l10.2-17.7c.6-1.1.6-2.4 0-3.5l-4.2-5.5z"
-    />
-    <path
-      fill="#FFFFFF"
-      d="M43.5 29.2c-1.2-2.1-4.2-2.1-5.4 0l-3.7 6.4c-1.2 2.1.3 4.8 2.7 4.8h7.3c2.4 0 3.9-2.7 2.7-4.8l-3.6-6.4z"
-    />
-  </svg>
-);
+import BrandLogo from "../components/BrandLogo";
 
 const AppLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { account, isConnected, connect, disconnect, isFujiNetwork, switchToFuji, provider, signer } = useWeb3();
+  const { account, isConnected, disconnect, isFujiNetwork, switchToFuji, provider, signer } = useWeb3();
   const [nickname, setNickname] = useState("");
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -106,6 +93,14 @@ const AppLayout = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const handleCreateVault = () => {
+    if (!isConnected) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    if (!isFujiNetwork) {
+      toast.error("Please switch to Avalanche Fuji network");
+      return;
+    }
     navigate("/vaults?create=true");
   };
 
@@ -259,8 +254,10 @@ const AppLayout = () => {
     navigate("/dashboard#approval-queue");
   };
 
+  const canCreateVault = isConnected && isFujiNetwork;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-[#040306] to-gray-950">
+    <div className="app-shell-bg min-h-screen">
       <aside
         className={`hidden lg:flex fixed left-0 top-0 h-screen border-r border-gray-800/80 bg-gray-950/90 backdrop-blur-2xl z-50 shadow-[18px_0_40px_-34px_rgba(0,0,0,0.95)] transition-[width] duration-300 overflow-visible ${
           desktopSidebarExpanded ? "w-[20rem]" : "w-[4.5rem]"
@@ -273,95 +270,115 @@ const AppLayout = () => {
             <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/90" />
           </div>
 
-          <Link to="/dashboard" className="mb-4 group">
-            <div className="w-11 h-11 rounded-xl bg-white/5 border border-gray-700/70 flex items-center justify-center shadow-lg shadow-brand-900/25 group-hover:border-brand-700/45 transition-colors">
-              <AvalancheLogo className="w-6 h-6" />
-            </div>
-          </Link>
+          <Tooltip content="Open dashboard" placement="right" delay={150}>
+            <Link to="/dashboard" className="mb-4 group">
+              <div className="w-11 h-11 rounded-xl bg-white/5 border border-gray-700/70 flex items-center justify-center shadow-lg shadow-brand-900/25 group-hover:border-brand-700/45 transition-colors">
+                <BrandLogo className="w-6 h-6" />
+              </div>
+            </Link>
+          </Tooltip>
 
-          <nav className="w-full flex-1 space-y-2">
+          <nav className="w-full space-y-2">
             {desktopRailItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
               return (
-                <Link
-                  key={`rail-${item.path}`}
-                  to={item.path}
-                  title={item.label}
-                  className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition-all ${
-                    active
-                      ? "bg-brand-700/22 border-brand-700/55 text-brand-300 shadow-[0_6px_18px_-10px_rgba(220,38,38,0.8)]"
-                      : "border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-700/70 hover:bg-gray-900/80"
-                  }`}
-                >
-                  <Icon className="text-[17px]" />
-                </Link>
+                <Tooltip key={`rail-tooltip-${item.path}`} content={item.label} placement="right" delay={120}>
+                  <Link
+                    key={`rail-${item.path}`}
+                    to={item.path}
+                    className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition-all ${
+                      active
+                        ? "bg-brand-700/22 border-brand-700/55 text-brand-300 shadow-[0_6px_18px_-10px_rgba(220,38,38,0.8)]"
+                        : "border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-700/70 hover:bg-gray-900/80"
+                    }`}
+                  >
+                    <Icon className="text-[17px]" />
+                  </Link>
+                </Tooltip>
               );
             })}
           </nav>
 
-          <Button
-            isIconOnly
-            onPress={handleCreateVault}
-            className="w-11 h-11 min-w-11 rounded-xl border border-brand-700/45 bg-brand-700/15 text-brand-300 hover:bg-brand-700/25"
-            aria-label="Create access vault"
-          >
-            <FiPlus className="text-[17px]" />
-          </Button>
+          <div className="mt-3 w-full space-y-2 border-t border-gray-800/70 pt-3">
+            <Tooltip content="Create access vault" placement="right" delay={120}>
+              <Button
+                isIconOnly
+                onPress={handleCreateVault}
+                isDisabled={!canCreateVault}
+                className={`mx-auto w-11 h-11 min-w-11 rounded-xl border ${
+                  canCreateVault
+                    ? "border-brand-700/45 bg-brand-700/15 text-brand-300 hover:bg-brand-700/25"
+                    : "border-gray-800/80 bg-gray-900/55 text-gray-600"
+                }`}
+                aria-label="Create access vault"
+              >
+                <FiPlus className="text-[17px]" />
+              </Button>
+            </Tooltip>
 
-          {desktopProfileItem && (
-            <Link
-              to={desktopProfileItem.path}
-              title={desktopProfileItem.label}
-              className={`mt-2 mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition-all ${
-                isActive(desktopProfileItem.path)
-                  ? "bg-brand-700/22 border-brand-700/55 text-brand-300"
-                  : "border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-700/70 hover:bg-gray-900/80"
-              }`}
-            >
-              <desktopProfileItem.icon className="text-[17px]" />
-            </Link>
-          )}
+            {desktopProfileItem && (
+              <Tooltip content={desktopProfileItem.label} placement="right" delay={120}>
+                <Link
+                  to={desktopProfileItem.path}
+                  className={`mx-auto flex h-11 w-11 items-center justify-center rounded-xl border transition-all ${
+                    isActive(desktopProfileItem.path)
+                      ? "bg-brand-700/22 border-brand-700/55 text-brand-300"
+                      : "border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-700/70 hover:bg-gray-900/80"
+                  }`}
+                >
+                  <desktopProfileItem.icon className="text-[17px]" />
+                </Link>
+              </Tooltip>
+            )}
+          </div>
         </div>
 
         {desktopSidebarExpanded && (
         <div className="flex-1 min-w-0 p-3 flex flex-col">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex-1 rounded-2xl border border-gray-800/85 bg-gray-900/75 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold truncate">SpooVault</p>
-                  <p className="text-xs text-gray-400 truncate">spoovault.web.app</p>
-                </div>
-                <FiChevronDown className="text-gray-500 text-sm" />
-              </div>
+          <button
+            type="button"
+            onClick={toggleDesktopSidebar}
+            className="mb-3 w-full rounded-2xl border border-gray-800/80 bg-gray-900/60 px-3 py-3 flex items-center justify-between gap-2 text-left hover:border-gray-700/80 hover:bg-gray-900/75 transition-colors"
+            aria-label="Collapse sidebar"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">SpooVault</p>
+              <p className="text-xs text-gray-400 truncate">spoovault.web.app</p>
             </div>
-            <Button
-              isIconOnly
-              onPress={toggleDesktopSidebar}
-              className="h-10 w-10 min-w-10 rounded-xl border border-gray-700/75 bg-gradient-to-b from-gray-900/95 to-gray-900/70 text-gray-300 hover:text-white hover:border-gray-500 shadow-[0_12px_24px_-18px_rgba(0,0,0,0.95)]"
-              aria-label="Collapse sidebar"
-            >
-              <FiChevronLeft className="text-[16px]" />
-            </Button>
-          </div>
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-gray-700/75 bg-gray-900/85 text-gray-300">
+              <FiChevronLeft className="text-[15px]" />
+            </span>
+          </button>
 
           <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-900/65 px-3 py-2.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
-                  isFujiNetwork ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]" : "bg-yellow-400"
+                  !isConnected
+                    ? "bg-gray-500"
+                    : isFujiNetwork
+                    ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]"
+                    : "bg-yellow-400"
                 }`}
               />
               <p
                 className={`text-xs font-medium truncate ${
-                  isFujiNetwork ? "text-green-300" : "text-yellow-300"
+                  !isConnected
+                    ? "text-gray-400"
+                    : isFujiNetwork
+                    ? "text-green-300"
+                    : "text-yellow-300"
                 }`}
               >
-                {isFujiNetwork ? "Avalanche Fuji Online" : "Wrong Network"}
+                {!isConnected
+                  ? "Wallet Not Connected"
+                  : isFujiNetwork
+                  ? "Avalanche Fuji Online"
+                  : "Wrong Network"}
               </p>
             </div>
-            {!isFujiNetwork && (
+            {isConnected && !isFujiNetwork && (
               <button
                 type="button"
                 onClick={switchToFuji}
@@ -417,10 +434,15 @@ const AppLayout = () => {
             })}
           </nav>
 
-          <div className="mt-auto pt-4 space-y-3">
+          <div className="mt-3 pt-3 space-y-3 border-t border-gray-800/70">
             <Button
               onPress={handleCreateVault}
-              className={`w-full ${buttonClasses.primarySm}`}
+              isDisabled={!canCreateVault}
+              className={
+                canCreateVault
+                  ? `w-full ${buttonClasses.outlineSm}`
+                  : "w-full h-12 rounded-full border border-gray-800/80 bg-gray-900/70 text-gray-500"
+              }
               startContent={<FiPlus className="text-base" />}
             >
               Create Access Vault
@@ -468,15 +490,7 @@ const AppLayout = () => {
                   )}
                 </div>
               </div>
-            ) : (
-              <Button
-                onPress={connect}
-                className={`w-full ${buttonClasses.ghostMd}`}
-                startContent={<FiZap className="text-brand-400" />}
-              >
-                Connect Wallet
-              </Button>
-            )}
+            ) : null}
           </div>
         </div>
         )}
@@ -486,10 +500,9 @@ const AppLayout = () => {
             type="button"
             onClick={toggleDesktopSidebar}
             aria-label="Expand sidebar"
-            className="group absolute -right-4 top-1/2 -translate-y-1/2 h-[4.6rem] w-8 rounded-r-2xl rounded-l-md border border-gray-700/75 bg-gradient-to-b from-gray-900/96 to-gray-900/85 text-gray-300 shadow-[0_20px_30px_-18px_rgba(0,0,0,0.95)] hover:border-gray-500 hover:text-white transition-all"
+            className="group absolute -right-5 top-1/2 -translate-y-1/2 h-10 w-10 rounded-xl border border-gray-700/80 bg-gray-900/95 text-gray-300 shadow-[0_18px_30px_-20px_rgba(0,0,0,0.95)] hover:border-gray-500 hover:text-white transition-all"
           >
-            <span className="absolute left-[8px] top-1/2 -translate-y-1/2 h-9 w-px bg-gray-700/80 group-hover:bg-gray-500/80" />
-            <FiChevronRight className="mx-auto text-[15px] relative z-[1]" />
+            <FiChevronRight className="mx-auto text-[16px]" />
           </button>
         )}
       </aside>
@@ -498,7 +511,7 @@ const AppLayout = () => {
         <div className="h-16 px-3.5 flex items-center gap-2">
           <Link to="/dashboard" className="min-w-0 flex-1 flex items-center gap-2.5 overflow-hidden">
             <div className="w-9 h-9 rounded-xl bg-white/5 border border-gray-700/60 flex items-center justify-center shadow-lg shadow-brand-900/30">
-              <AvalancheLogo className="w-5 h-5" />
+              <BrandLogo className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <p className="text-[15px] font-semibold leading-none truncate">SpooVault</p>
@@ -529,7 +542,12 @@ const AppLayout = () => {
                 )}
               </button>
             )}
-            {isFujiNetwork ? (
+            {!isConnected ? (
+              <span
+                title="Wallet not connected"
+                className="inline-flex w-2.5 h-2.5 rounded-full bg-gray-500 ring-2 ring-gray-500/20"
+              />
+            ) : isFujiNetwork ? (
               <span
                 title="Avalanche Fuji"
                 className="inline-flex w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-green-500/25"
@@ -578,15 +596,7 @@ const AppLayout = () => {
                   </div>
                 )}
               </div>
-            ) : (
-              <Button
-                size="sm"
-                onPress={connect}
-                className={`${buttonClasses.primarySm} !px-3 !min-w-[4.25rem]`}
-              >
-                Connect
-              </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </header>

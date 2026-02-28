@@ -32,7 +32,7 @@ interface Web3ContextType {
   isConnecting: boolean;
   contract: ethers.Contract | null;
   connect: () => Promise<void>;
-  disconnect: () => void;
+  disconnect: (options?: { notify?: boolean }) => void;
   switchToFuji: () => Promise<void>;
   isFujiNetwork: boolean;
 }
@@ -46,6 +46,7 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
   const [chainId, setChainId] = useState<number | null>(null);
   const [contract, setContract] = useState<ethers.Contract | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
   const FUJI_CHAIN_ID = 43113;
@@ -124,7 +125,12 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
     if (window.ethereum) {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length === 0) {
-          disconnect();
+          setProvider(null);
+          setSigner(null);
+          setAccount(null);
+          setChainId(null);
+          setContract(null);
+          contractService.clear();
         } else {
           checkConnection();
         }
@@ -188,15 +194,24 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const disconnect = () => {
+  const disconnect = useCallback((options?: { notify?: boolean }) => {
+    if (isDisconnecting) return;
+    const notify = options?.notify ?? true;
+    const hadSession = Boolean(provider || signer || account || contract);
+    if (!hadSession) return;
+
+    setIsDisconnecting(true);
     setProvider(null);
     setSigner(null);
     setAccount(null);
     setChainId(null);
     setContract(null);
     contractService.clear();
-    toast.success("Disconnected");
-  };
+    if (notify) {
+      toast.success("Disconnected");
+    }
+    window.setTimeout(() => setIsDisconnecting(false), 300);
+  }, [account, contract, isDisconnecting, provider, signer]);
 
   const switchToFuji = async () => {
     if (!window.ethereum) {
