@@ -22,6 +22,7 @@ import {
   FiShield,
   FiDownload,
   FiExternalLink,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useWeb3 } from "../context/Web3Context";
@@ -90,6 +91,12 @@ const buildFallbackMetadata = (token: TokenData): TokenMetadata => ({
   vaultId: token.vaultId,
   tokenURI: token.tokenURI || "",
 });
+
+const getPassArtGradient = (token: TokenData): string => {
+  const seed = ((token.vaultId ?? token.tokenId) * 47) % 360;
+  const accent = (seed + 46) % 360;
+  return `radial-gradient(120% 120% at 16% 14%, hsla(${seed}, 74%, 56%, 0.38) 0%, transparent 55%), radial-gradient(110% 120% at 84% 88%, hsla(${accent}, 70%, 48%, 0.32) 0%, transparent 62%), linear-gradient(145deg, hsla(${seed}, 46%, 15%, 0.98), hsla(${accent}, 52%, 9%, 0.98))`;
+};
 
 const isWalletAuthorizationError = (error: any): boolean => {
   const code =
@@ -356,6 +363,13 @@ const NFTGallery = () => {
   };
 
   const handleBurn = async (tokenId: number) => {
+    const confirmed = window.confirm(
+      `Burn Pass #${tokenId}? This cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
     setBurningTokenId(tokenId);
     try {
       await contractService.burnAccessToken(tokenId);
@@ -435,7 +449,7 @@ const NFTGallery = () => {
       <div className="space-y-8">
         <div className="rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiAlertCircle className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Wrong Network</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -544,8 +558,16 @@ const NFTGallery = () => {
             >
               <CardBody className="p-0">
                 <div className="relative h-48 overflow-hidden rounded-t-lg">
-                  <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
-                    <FiKey className="text-gray-600 text-4xl" />
+                  <div
+                    className="w-full h-full flex items-center justify-center"
+                    style={{ background: getPassArtGradient(token) }}
+                  >
+                    <FiKey className="text-white/85 text-4xl" />
+                  </div>
+                  <div className="absolute top-3 left-3">
+                    <Chip size="sm" variant="flat" className="bg-black/35 text-gray-100 border border-white/15">
+                      {token.vaultId !== null ? `Vault #${token.vaultId}` : "Vault Unlinked"}
+                    </Chip>
                   </div>
                   <div className="absolute top-3 right-3">
                     <Chip color="success" variant="flat" size="sm">
@@ -703,15 +725,6 @@ const NFTGallery = () => {
           <ModalHeader className="border-b border-gray-800/80 px-4 sm:px-6 py-4">Mint Access Pass</ModalHeader>
           <ModalBody className="modal-scroll max-h-[70vh] overflow-y-auto px-4 sm:px-6 py-4">
             <div className="space-y-4">
-              <div className="space-y-1">
-                <p className="text-xs text-gray-300 font-medium">Vault ID</p>
-                <Input
-                  placeholder="Enter vault ID"
-                  value={form.vaultId}
-                  onValueChange={(value) => setForm({ ...form, vaultId: value })}
-                  classNames={modalInputClassNames}
-                />
-              </div>
               <div className="space-y-1">
                 <p className="text-xs text-gray-300 font-medium">Recipient Address</p>
                 <Input

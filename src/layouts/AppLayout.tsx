@@ -83,8 +83,8 @@ const AppLayout = () => {
     { path: "/dashboard", label: "Home", icon: FiHome },
     { path: "/vaults", label: "Vaults", icon: FiShield },
     { path: "/documents", label: "Docs", icon: FiFile },
+    { path: "/access", label: "Access", icon: FiUnlock },
     { path: "/nfts", label: "Passes", icon: FiKey },
-    { path: "/profile", label: "Profile", icon: FiUser },
   ];
 
   const desktopRailItems = navItems.filter((item) => item.path !== "/profile");
@@ -336,20 +336,20 @@ const AppLayout = () => {
 
         {desktopSidebarExpanded && (
         <div className="flex-1 min-w-0 p-3 flex flex-col">
-          <button
-            type="button"
-            onClick={toggleDesktopSidebar}
-            className="mb-3 w-full rounded-2xl border border-gray-800/80 bg-gray-900/60 px-3 py-3 flex items-center justify-between gap-2 text-left hover:border-gray-700/80 hover:bg-gray-900/75 transition-colors"
-            aria-label="Collapse sidebar"
-          >
-            <div className="min-w-0">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex-1 min-w-0 rounded-2xl border border-gray-800/80 bg-gray-900/60 px-3 py-3">
               <p className="text-sm font-semibold truncate">SpooVault</p>
               <p className="text-xs text-gray-400 truncate">spoovault.web.app</p>
             </div>
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-gray-700/75 bg-gray-900/85 text-gray-300">
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-700/80 bg-gray-900/85 text-gray-300 hover:border-gray-500 hover:text-white transition-colors"
+              aria-label="Collapse sidebar"
+            >
               <FiChevronLeft className="text-[15px]" />
-            </span>
-          </button>
+            </button>
+          </div>
 
           <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-900/65 px-3 py-2.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -542,16 +542,23 @@ const AppLayout = () => {
                 )}
               </button>
             )}
+            {!isConnected && (
+              <Link
+                to="/profile"
+                aria-label="Open profile"
+                className="w-9 h-9 rounded-xl border border-gray-700/75 bg-gray-900/75 text-gray-300 flex items-center justify-center hover:border-gray-600 hover:text-gray-100 transition-colors"
+              >
+                <FiUser className="text-[14px]" />
+              </Link>
+            )}
             {!isConnected ? (
-              <span
-                title="Wallet not connected"
-                className="inline-flex w-2.5 h-2.5 rounded-full bg-gray-500 ring-2 ring-gray-500/20"
-              />
+              <Tooltip content="Wallet not connected" placement="bottom" delay={120}>
+                <span className="inline-flex w-2.5 h-2.5 rounded-full bg-gray-500 ring-2 ring-gray-500/20" />
+              </Tooltip>
             ) : isFujiNetwork ? (
-              <span
-                title="Avalanche Fuji"
-                className="inline-flex w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-green-500/25"
-              />
+              <Tooltip content="Avalanche Fuji" placement="bottom" delay={120}>
+                <span className="inline-flex w-2.5 h-2.5 rounded-full bg-green-500 ring-2 ring-green-500/25" />
+              </Tooltip>
             ) : (
               <Button
                 isIconOnly

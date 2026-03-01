@@ -501,7 +501,6 @@ const Dashboard = () => {
     key: string;
     value: number;
     label: string;
-    tag: string;
     icon: JSX.Element;
     iconBg: string;
   }> = [
@@ -509,7 +508,6 @@ const Dashboard = () => {
       key: "vaults",
       value: stats.totalVaults,
       label: "Access Vaults",
-      tag: "Visible",
       icon: <FiShield className="text-white text-xl" />,
       iconBg: "bg-gradient-to-br from-brand-700 to-brand-900",
     },
@@ -517,7 +515,6 @@ const Dashboard = () => {
       key: "documents",
       value: stats.totalDocuments,
       label: "Legacy Documents",
-      tag: "Visible",
       icon: <FiFile className="text-white text-xl" />,
       iconBg: "bg-gradient-to-br from-blue-500 to-cyan-500",
     },
@@ -525,7 +522,6 @@ const Dashboard = () => {
       key: "guardians",
       value: stats.totalGuardians,
       label: "Guardians",
-      tag: "Unique",
       icon: <FiUsers className="text-white text-xl" />,
       iconBg: "bg-gradient-to-br from-green-500 to-emerald-500",
     },
@@ -533,7 +529,6 @@ const Dashboard = () => {
       key: "passes",
       value: stats.totalNFTs,
       label: "My Access Passes",
-      tag: "Owned",
       icon: <FiKey className="text-white text-xl" />,
       iconBg: "bg-gradient-to-br from-purple-500 to-violet-500",
     },
@@ -640,11 +635,8 @@ const Dashboard = () => {
             {statCards.map((card) => (
               <Card key={card.key} className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
                 <CardBody className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`p-3 rounded-xl ${card.iconBg}`}>{card.icon}</div>
-                    <span className="text-[11px] uppercase tracking-wider rounded-full px-2 py-1 border border-gray-700/80 text-gray-400 bg-gray-900/65">
-                      {card.tag}
-                    </span>
+                  <div className="mb-4">
+                    <div className={`inline-flex p-3 rounded-xl ${card.iconBg}`}>{card.icon}</div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">{card.value}</h3>
                   <p className="text-gray-400 text-sm">{card.label}</p>
@@ -670,7 +662,11 @@ const Dashboard = () => {
             <button
               key={step.key}
               type="button"
-              className="w-full rounded-xl border border-gray-800/80 bg-gray-900/50 px-4 py-3 flex items-center justify-between gap-3 hover:border-gray-700/80 transition-colors"
+              className={`w-full rounded-xl border px-4 py-3 flex items-center justify-between gap-3 transition-colors ${
+                step.done
+                  ? "border-green-800/40 bg-green-500/5 hover:border-green-700/50"
+                  : "border-gray-800/80 bg-gray-900/50 hover:border-gray-700/80"
+              }`}
               onClick={() => navigate(step.route)}
             >
               <div className="flex items-center gap-3 text-left">
@@ -679,9 +675,13 @@ const Dashboard = () => {
                 ) : (
                   <FiCircle className="text-gray-500 flex-shrink-0" />
                 )}
-                <span className="text-sm">{step.title}</span>
+                <span className={`text-sm ${step.done ? "line-through text-gray-400 opacity-70" : ""}`}>
+                  {step.title}
+                </span>
               </div>
-              <span className="text-xs text-gray-500">Open</span>
+              <span className={`text-xs ${step.done ? "text-green-400/90" : "text-gray-500"}`}>
+                {step.done ? "Done" : "Open"}
+              </span>
             </button>
           ))}
           <p className="text-xs text-gray-500">
@@ -782,10 +782,7 @@ const Dashboard = () => {
         </Card>
 
         <div className="space-y-6">
-          <Card
-            id="approval-queue"
-            className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm scroll-mt-24"
-          >
+          <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
             <CardHeader>
               <h2 className="text-xl font-semibold">Quick Actions</h2>
             </CardHeader>
@@ -826,11 +823,11 @@ const Dashboard = () => {
                   <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
               </Link>
-              <Link to="/vaults?create=true">
+              <Link to="/vaults">
                 <Button fullWidth className={`${buttonClasses.ghostMd} !h-11 justify-between`}>
                   <span className="flex items-center gap-3">
                     <FiUsers />
-                    Invite Guardians
+                    Manage Vaults
                   </span>
                   <FiArrowUpRight className="text-sm text-gray-500" />
                 </Button>
@@ -841,7 +838,10 @@ const Dashboard = () => {
             </CardBody>
           </Card>
 
-          <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
+          <Card
+            id="approval-queue"
+            className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm scroll-mt-24"
+          >
             <CardHeader className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <FiCheckCircle className="mt-0.5 flex-shrink-0" />
@@ -944,9 +944,9 @@ const Dashboard = () => {
                   <Button
                     className={buttonClasses.ghostSm}
                     startContent={<FiUsers />}
-                    onPress={() => navigate("/vaults?create=true")}
+                    onPress={() => navigate("/vaults")}
                   >
-                    Invite Guardians
+                    Manage Vaults
                   </Button>
                 </div>
               </div>
@@ -963,7 +963,10 @@ const Dashboard = () => {
                       <span className="font-medium">{vault.name}</span>
                       <span className="text-sm text-gray-400 ml-3">{docCount} docs</span>
                     </div>
-                    <span className="font-semibold">{progress}%</span>
+                    <div className="text-right">
+                      <p className="font-semibold leading-none">{progress}%</p>
+                      <p className="text-[11px] text-gray-500 mt-1">Relative share</p>
+                    </div>
                   </div>
                   <Progress
                     value={progress}

@@ -7,11 +7,18 @@ import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
 import { contractService, GuardianInviteData } from "../services/contract.service";
 
+interface InviteVaultContext {
+  name: string;
+  description: string;
+  creator: string;
+}
+
 const Profile = () => {
   const { account, isConnected, connect, provider, signer, isFujiNetwork, switchToFuji } = useWeb3();
   const [nickname, setNickname] = useState("");
   const [theme, setTheme] = useState<"ember" | "midnight">("ember");
   const [pendingInvites, setPendingInvites] = useState<GuardianInviteData[]>([]);
+  const [inviteVaultContextById, setInviteVaultContextById] = useState<Record<number, InviteVaultContext>>({});
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [acceptingVaultId, setAcceptingVaultId] = useState<number | null>(null);
   const profileInputClassNames = {
@@ -52,6 +59,7 @@ const Profile = () => {
   const loadPendingInvites = async () => {
     if (!account || !isFujiNetwork) {
       setPendingInvites([]);
+      setInviteVaultContextById({});
       return;
     }
 
@@ -60,8 +68,27 @@ const Profile = () => {
       const invites = await contractService.fetchPendingInvites(account);
       const sorted = [...invites].sort((a, b) => a.expiresAt - b.expiresAt);
       setPendingInvites(sorted);
+
+      if (sorted.length === 0) {
+        setInviteVaultContextById({});
+        return;
+      }
+
+      const inviteVaultIds = new Set<number>(sorted.map((invite) => invite.vaultId));
+      const vaults = await contractService.fetchVaults();
+      const contextMap: Record<number, InviteVaultContext> = {};
+      vaults.forEach((vault) => {
+        if (!inviteVaultIds.has(vault.id)) return;
+        contextMap[vault.id] = {
+          name: vault.name || `Vault #${vault.id}`,
+          description: vault.description || "",
+          creator: vault.creator || "",
+        };
+      });
+      setInviteVaultContextById(contextMap);
     } catch (error) {
       console.error("Error loading pending invites:", error);
+      setInviteVaultContextById({});
       toast.error("Failed to load guardian invites");
     } finally {
       setLoadingInvites(false);
@@ -162,13 +189,19 @@ const Profile = () => {
                 className={theme === "ember" ? buttonClasses.primaryMd : buttonClasses.ghostMd}
                 onPress={() => setTheme("ember")}
               >
-                Ember
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-orange-300 via-orange-500 to-red-600" />
+                  <span>Ember</span>
+                </span>
               </Button>
               <Button
                 className={theme === "midnight" ? buttonClasses.primaryMd : buttonClasses.ghostMd}
                 onPress={() => setTheme("midnight")}
               >
-                Midnight
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-blue-400 via-indigo-500 to-slate-700" />
+                  <span>Midnight</span>
+                </span>
               </Button>
             </div>
             <p className="text-xs text-gray-500">
@@ -176,6 +209,16 @@ const Profile = () => {
             </p>
           </CardBody>
         </Card>
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          className={buttonClasses.primaryMd}
+          startContent={<FiSave />}
+          onPress={handleSave}
+        >
+          Save Changes
+        </Button>
       </div>
 
       <Card className="border border-gray-800 bg-gray-900/40 backdrop-blur-sm">
@@ -218,8 +261,24 @@ const Profile = () => {
                 key={`${invite.vaultId}-${invite.expiresAt}`}
                 className="rounded-2xl border border-gray-800 bg-gray-900/55 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
               >
-                <div className="space-y-1">
-                  <p className="font-medium">Vault #{invite.vaultId}</p>
+                <div className="space-y-1.5 min-w-0">
+                  <p className="font-medium truncate">
+                    {inviteVaultContextById[invite.vaultId]?.name || `Vault #${invite.vaultId}`}
+                  </p>
+                  <p className="text-xs text-gray-400 break-words">
+                    {inviteVaultContextById[invite.vaultId]?.description?.trim() ||
+                      "No vault description provided."}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <Chip size="sm" variant="flat" className="bg-gray-900/70 border border-gray-700/70 text-gray-300">
+                      Vault #{invite.vaultId}
+                    </Chip>
+                    <span>
+                      {inviteVaultContextById[invite.vaultId]?.creator
+                        ? `From owner ${shortenAddress(inviteVaultContextById[invite.vaultId].creator, 6)}`
+                        : `Assigned to ${shortenAddress(invite.guardian, 6)}`}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <FiClock />
                     <span>Expires {formatDate(invite.expiresAt)}</span>
@@ -239,16 +298,6 @@ const Profile = () => {
           )}
         </CardBody>
       </Card>
-
-      <div className="flex justify-end">
-        <Button
-          className={buttonClasses.primaryMd}
-          startContent={<FiSave />}
-          onPress={handleSave}
-        >
-          Save Changes
-        </Button>
-      </div>
     </div>
   );
 };

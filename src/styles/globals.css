@@ -89,20 +89,17 @@ h6 {
   border-width: 0;
 }
 
-button,
-[role="button"] {
+.app-btn {
   border-radius: 14px;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
-button:hover:not(:disabled),
-[role="button"]:hover:not([aria-disabled="true"]) {
+.app-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 12px 24px -16px rgba(143, 22, 22, 0.85);
 }
 
-button:active:not(:disabled),
-[role="button"]:active:not([aria-disabled="true"]) {
+.app-btn:active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 8px 18px -14px rgba(143, 22, 22, 0.75);
 }
@@ -153,8 +150,8 @@ input[type="file"]::file-selector-button:hover {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -162,26 +159,18 @@ input[type="file"]::file-selector-button:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    rgba(84, 122, 184, 0.78) 0%,
-    rgba(54, 86, 140, 0.72) 100%
-  );
+  background: rgba(180, 40, 40, 0.5);
   border-radius: 999px;
-  border: 1px solid rgba(125, 160, 222, 0.38);
+  border: 1px solid rgba(220, 38, 38, 0.2);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    rgba(112, 152, 219, 0.85) 0%,
-    rgba(70, 108, 171, 0.82) 100%
-  );
+  background: rgba(220, 38, 38, 0.9);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(84, 122, 184, 0.8) rgba(6, 11, 22, 0.88);
+  scrollbar-color: rgba(180, 40, 40, 0.5) rgba(6, 11, 22, 0.88);
 }
 
 .modal-scroll::-webkit-scrollbar {

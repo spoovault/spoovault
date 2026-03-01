@@ -43,8 +43,7 @@ import {
 import { toast } from "react-hot-toast";
 import { captureError } from "../services/telemetry.service";
 import { keyInboxService } from "../services/keyInbox.service";
-
-const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
+import { keyStoreService } from "../services/keyStore.service";
 
 type WordArray = { words: number[]; sigBytes: number };
 type ImportedKeyPayload = {
@@ -224,7 +223,7 @@ const AccessCenter = () => {
         throw new Error("This key package is for a different blockchain network");
       }
 
-      localStorage.setItem(getKeyStorageKey(documentId), key);
+      keyStoreService.set(documentId, key);
       toast.success(`Key imported for Document #${documentId}`);
       await loadData();
     } catch (error: any) {
@@ -337,7 +336,7 @@ const AccessCenter = () => {
           continue;
         }
 
-        localStorage.setItem(getKeyStorageKey(documentId), key);
+        keyStoreService.set(documentId, key);
         previews.push({
           documentId,
           vaultId,
@@ -386,11 +385,7 @@ const AccessCenter = () => {
   }, [tokens]);
 
   const getStoredKey = (docId: number): string | null => {
-    try {
-      return localStorage.getItem(getKeyStorageKey(docId));
-    } catch {
-      return null;
-    }
+    return keyStoreService.get(docId);
   };
 
   const decryptMetadata = (doc: DocumentData): { name?: string; type?: string } | null => {
@@ -861,6 +856,9 @@ const AccessCenter = () => {
           <p className="font-medium text-gray-200">Flow reminder</p>
           <p className="text-gray-400">
             Beneficiary needs vault pass NFT + guardian-approved request + key (Fetch Inbox Keys or import package).
+          </p>
+          <p className="text-gray-500 mt-1">
+            Security mode: imported keys are cached for this browser session and cleared when the session ends.
           </p>
         </div>
       </div>

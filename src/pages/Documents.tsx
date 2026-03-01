@@ -32,6 +32,9 @@ import {
   FiUser,
   FiKey,
   FiSend,
+  FiAlertCircle,
+  FiLoader,
+  FiFileText,
 } from "react-icons/fi";
 import CryptoJS from "crypto-js";
 import { useWeb3 } from "../context/Web3Context";
@@ -57,8 +60,7 @@ import { toast } from "react-hot-toast";
 import { buttonClasses } from "../utils/buttonClasses";
 import { captureError } from "../services/telemetry.service";
 import { keyInboxService } from "../services/keyInbox.service";
-
-const getKeyStorageKey = (docId: number): string => `spoovault-doc-key-${docId}`;
+import { keyStoreService } from "../services/keyStore.service";
 
 type WordArray = { words: number[]; sigBytes: number };
 type ImportedKeyPayload = {
@@ -229,11 +231,7 @@ const Documents = () => {
   }, [vaults]);
 
   const getStoredKey = (docId: number): string | null => {
-    try {
-      return localStorage.getItem(getKeyStorageKey(docId));
-    } catch {
-      return null;
-    }
+    return keyStoreService.get(docId);
   };
 
   const decryptMetadata = (doc: DocumentData): { name?: string; size?: number; type?: string } | null => {
@@ -316,7 +314,7 @@ const Documents = () => {
         throw new Error("This key package is for a different blockchain network");
       }
 
-      localStorage.setItem(getKeyStorageKey(documentId), key);
+      keyStoreService.set(documentId, key);
       toast.success(`Key imported for Document #${documentId}`);
       await loadData();
     } catch (error: any) {
@@ -635,7 +633,7 @@ const Documents = () => {
       if (!documentId) {
         toast.error("Document uploaded but ID was not returned");
       } else {
-        localStorage.setItem(getKeyStorageKey(documentId), key);
+        keyStoreService.set(documentId, key);
         setLastKey(key);
         setLastDocumentId(documentId);
         setKeyBackupConfirmed(false);
@@ -768,7 +766,7 @@ const Documents = () => {
       <div className="space-y-8">
         <div className="rounded-2xl bg-gradient-to-r from-gray-900/50 to-[#040306] border border-gray-800 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-brand-700 to-brand-900 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiFileText className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Connect Your Wallet</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -792,7 +790,7 @@ const Documents = () => {
       <div className="space-y-8">
         <div className="rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiAlertCircle className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Wrong Network</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -918,155 +916,159 @@ const Documents = () => {
 
       <Card className="border border-gray-800 bg-gray-900/30 backdrop-blur-sm">
         <CardBody className="p-0">
-          <Table aria-label="Documents table" removeWrapper>
-            <TableHeader>
-              <TableColumn>FILE</TableColumn>
-              <TableColumn>VAULT</TableColumn>
-              <TableColumn>STATUS</TableColumn>
-              <TableColumn>ACCESS</TableColumn>
-              <TableColumn>RELEASE</TableColumn>
-              <TableColumn>ACTIONS</TableColumn>
-            </TableHeader>
-            <TableBody
-              emptyContent={loading ? "Loading files..." : "No files found"}
-            >
-              {filteredDocuments.map((item) => (
-                <TableRow key={item.doc.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center">
-                        <FiFile className="text-gray-400" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                          <FiUser />
-                          <span>{shortenAddress(item.doc.uploadedBy)}</span>
-                          <FiCalendar />
-                          <span>{formatDate(item.doc.uploadedAt)}</span>
+          <div className="overflow-x-auto">
+            <div className="min-w-[58rem]">
+              <Table aria-label="Documents table" removeWrapper>
+                <TableHeader>
+                  <TableColumn>FILE</TableColumn>
+                  <TableColumn>VAULT</TableColumn>
+                  <TableColumn>STATUS</TableColumn>
+                  <TableColumn>ACCESS</TableColumn>
+                  <TableColumn>RELEASE</TableColumn>
+                  <TableColumn>ACTIONS</TableColumn>
+                </TableHeader>
+                <TableBody
+                  emptyContent={loading ? "Loading files..." : "No files found"}
+                >
+                  {filteredDocuments.map((item) => (
+                    <TableRow key={item.doc.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center">
+                            <FiFile className="text-gray-400" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{item.name}</p>
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                              <FiUser />
+                              <span>{shortenAddress(item.doc.uploadedBy)}</span>
+                              <FiCalendar />
+                              <span>{formatDate(item.doc.uploadedAt)}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <FiShield className="text-gray-400" />
-                      <span>{item.vaultName}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {item.canDecrypt ? (
-                      <Chip color="success" variant="flat" size="sm">
-                        Decryptable
-                      </Chip>
-                    ) : item.isRequestPending ? (
-                      <Chip color="warning" variant="flat" size="sm">
-                        Request Pending
-                      </Chip>
-                    ) : item.hasChainAccess ? (
-                      <Chip color="warning" variant="flat" size="sm">
-                        Key Missing
-                      </Chip>
-                    ) : (
-                      <Chip color="danger" variant="flat" size="sm">
-                        Locked
-                      </Chip>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      color={
-                        item.doc.requiredAccess === 2
-                          ? "danger"
-                          : item.doc.requiredAccess === 1
-                          ? "warning"
-                          : "success"
-                      }
-                      variant="flat"
-                      size="sm"
-                    >
-                      {accessLabel(item.doc.requiredAccess)}
-                    </Chip>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      color={
-                        item.releaseCondition === 3
-                          ? "danger"
-                          : item.releaseCondition === 2
-                          ? "warning"
-                          : item.releaseCondition === 1
-                          ? "primary"
-                          : "success"
-                      }
-                      variant="flat"
-                      size="sm"
-                    >
-                      {releaseConditionLabel(item.releaseCondition)}
-                    </Chip>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        isIconOnly
-                        variant="light"
-                        size="sm"
-                        isDisabled={!item.canDecrypt}
-                        onPress={() => handleView(item.doc)}
-                      >
-                        <FiEye />
-                      </Button>
-                      <Button
-                        isIconOnly
-                        variant="light"
-                        size="sm"
-                        isDisabled={!item.canDecrypt}
-                        onPress={() => handleDownload(item.doc)}
-                      >
-                        <FiDownload />
-                      </Button>
-                      {!item.hasChainAccess && (
-                        <Button
-                          size="sm"
-                          className={buttonClasses.outlineSm}
-                          isDisabled={item.isRequestPending || requestingDocId === item.doc.id}
-                          isLoading={requestingDocId === item.doc.id}
-                          onPress={() => handleRequestAccess(item.doc.id)}
-                        >
-                          {item.isRequestPending ? "Pending" : "Request Access"}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        className={buttonClasses.ghostSm}
-                        startContent={<FiSend />}
-                        isDisabled={!item.hasLocalKey}
-                        onPress={() => openShareModalForDocument(item.doc.id)}
-                      >
-                        Share Key
-                      </Button>
-                      <Button
-                        isIconOnly
-                        variant="light"
-                        size="sm"
-                        aria-label="Copy IPFS hash"
-                        onPress={async () => {
-                          try {
-                            await navigator.clipboard.writeText(item.doc.ipfsHash);
-                            toast.success("IPFS hash copied");
-                          } catch {
-                            toast.error("Failed to copy IPFS hash");
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <FiShield className="text-gray-400" />
+                          <span>{item.vaultName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {item.canDecrypt ? (
+                          <Chip color="success" variant="flat" size="sm">
+                            Decryptable
+                          </Chip>
+                        ) : item.isRequestPending ? (
+                          <Chip color="warning" variant="flat" size="sm">
+                            Request Pending
+                          </Chip>
+                        ) : item.hasChainAccess ? (
+                          <Chip color="warning" variant="flat" size="sm">
+                            Key Missing
+                          </Chip>
+                        ) : (
+                          <Chip color="danger" variant="flat" size="sm">
+                            Locked
+                          </Chip>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          color={
+                            item.doc.requiredAccess === 2
+                              ? "danger"
+                              : item.doc.requiredAccess === 1
+                              ? "warning"
+                              : "success"
                           }
-                        }}
-                      >
-                        <FiCopy />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                          variant="flat"
+                          size="sm"
+                        >
+                          {accessLabel(item.doc.requiredAccess)}
+                        </Chip>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          color={
+                            item.releaseCondition === 3
+                              ? "danger"
+                              : item.releaseCondition === 2
+                              ? "warning"
+                              : item.releaseCondition === 1
+                              ? "primary"
+                              : "success"
+                          }
+                          variant="flat"
+                          size="sm"
+                        >
+                          {releaseConditionLabel(item.releaseCondition)}
+                        </Chip>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            isIconOnly
+                            variant="light"
+                            size="sm"
+                            isDisabled={!item.canDecrypt}
+                            onPress={() => handleView(item.doc)}
+                          >
+                            <FiEye />
+                          </Button>
+                          <Button
+                            isIconOnly
+                            variant="light"
+                            size="sm"
+                            isDisabled={!item.canDecrypt}
+                            onPress={() => handleDownload(item.doc)}
+                          >
+                            <FiDownload />
+                          </Button>
+                          {!item.hasChainAccess && (
+                            <Button
+                              size="sm"
+                              className={buttonClasses.outlineSm}
+                              isDisabled={item.isRequestPending || requestingDocId === item.doc.id}
+                              isLoading={requestingDocId === item.doc.id}
+                              onPress={() => handleRequestAccess(item.doc.id)}
+                            >
+                              {item.isRequestPending ? "Pending" : "Request Access"}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            className={buttonClasses.ghostSm}
+                            startContent={<FiSend />}
+                            isDisabled={!item.hasLocalKey}
+                            onPress={() => openShareModalForDocument(item.doc.id)}
+                          >
+                            Share Key
+                          </Button>
+                          <Button
+                            isIconOnly
+                            variant="light"
+                            size="sm"
+                            aria-label="Copy IPFS hash"
+                            onPress={async () => {
+                              try {
+                                await navigator.clipboard.writeText(item.doc.ipfsHash);
+                                toast.success("IPFS hash copied");
+                              } catch {
+                                toast.error("Failed to copy IPFS hash");
+                              }
+                            }}
+                          >
+                            <FiCopy />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </CardBody>
       </Card>
 
@@ -1233,11 +1235,22 @@ const Documents = () => {
                   <span className="font-medium">Note:</span> Files are encrypted client-side before
                   upload. Save the encryption key shown after upload.
                 </p>
+                <p className="text-xs text-gray-400 mt-2">
+                  Security mode: document keys are cached for the current browser session only.
+                </p>
               </div>
               {uploading && (
                 <div className="p-4 bg-gray-900/70 border border-gray-700/70 rounded-2xl space-y-1">
-                  <p className="text-sm font-medium">Upload Status</p>
-                  <p className="text-sm text-gray-300">{uploadStageLabel(uploadStage)}</p>
+                  <div className="flex items-center gap-2">
+                    <FiLoader className="text-brand-400 animate-spin" />
+                    <p className="text-sm font-medium">Upload Status</p>
+                    <span className="inline-flex items-center gap-1 text-brand-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse [animation-delay:160ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse [animation-delay:320ms]" />
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-300" aria-live="polite">{uploadStageLabel(uploadStage)}</p>
                 </div>
               )}
             </div>

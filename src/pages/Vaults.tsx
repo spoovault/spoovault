@@ -32,6 +32,7 @@ import {
   FiZap,
   FiClock,
   FiAlertTriangle,
+  FiAlertCircle,
 } from "react-icons/fi";
 import { useSearchParams } from "react-router-dom";
 import { useWeb3 } from "../context/Web3Context";
@@ -52,7 +53,7 @@ interface Vault extends VaultData {
 const Vaults = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "active" | "mine" | "pending">("all");
+  const [filter, setFilter] = useState<"all" | "active" | "mine" | "inactive">("all");
   const [searchParams] = useSearchParams();
   const { account, isConnected, connect, provider, signer, isFujiNetwork } = useWeb3();
 
@@ -326,7 +327,7 @@ const Vaults = () => {
     )
     .filter((vault) => {
       if (filter === "active") return vault.isActive;
-      if (filter === "pending") return !vault.isActive;
+      if (filter === "inactive") return !vault.isActive;
       if (filter === "mine") return vault.creator.toLowerCase() === account?.toLowerCase();
       return true;
     });
@@ -345,6 +346,16 @@ const Vaults = () => {
     "h-11 w-full rounded-full border border-gray-700/80 bg-gray-900/75 pl-10 pr-10 text-sm text-gray-100 outline-none transition-colors hover:border-gray-600 focus:border-brand-700/70";
   const rangeInputClass =
     "w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-800 accent-red-600";
+  const maxApprovalThreshold = Math.max(1, formData.guardians.length + 1);
+
+  useEffect(() => {
+    if (formData.approvalThreshold > maxApprovalThreshold) {
+      setFormData((prev) => ({
+        ...prev,
+        approvalThreshold: maxApprovalThreshold,
+      }));
+    }
+  }, [formData.approvalThreshold, maxApprovalThreshold]);
 
   if (!isConnected) {
     return (
@@ -375,7 +386,7 @@ const Vaults = () => {
       <div className="min-h-[calc(100vh-11rem)] flex items-center justify-center">
         <div className="w-full max-w-4xl rounded-2xl bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <FiShield className="text-white text-3xl" />
+            <FiAlertCircle className="text-white text-3xl" />
           </div>
           <h1 className="text-3xl font-bold mb-4">Wrong Network</h1>
           <p className="text-gray-400 mb-8 max-w-2xl mx-auto">
@@ -432,7 +443,7 @@ const Vaults = () => {
             <option value="all">All Access Vaults</option>
             <option value="active">Active</option>
             <option value="mine">My Access Vaults</option>
-            <option value="pending">Pending</option>
+            <option value="inactive">Inactive</option>
           </select>
           <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
         </div>
@@ -497,6 +508,11 @@ const Vaults = () => {
             };
             const inactivityDays = Math.max(1, Math.round(releaseState.inactivityPeriod / 86400));
             const isCreator = vault.creator.toLowerCase() === account?.toLowerCase();
+            const isGuardian = vault.guardians.some(
+              (guardian) => guardian.toLowerCase() === account?.toLowerCase()
+            );
+            const roleLabel = isCreator ? "Owner" : isGuardian ? "Guardian" : "Beneficiary";
+            const roleColor = isCreator ? "danger" : isGuardian ? "success" : "default";
 
             return (
               <Card
@@ -510,13 +526,18 @@ const Vaults = () => {
                     </div>
                     <div>
                       <h3 className="font-bold text-lg">{vault.name}</h3>
-                      <Chip
-                        color={vault.isActive ? "success" : "warning"}
-                        variant="flat"
-                        size="sm"
-                      >
-                        {vault.isActive ? "ACTIVE" : "PENDING"}
-                      </Chip>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Chip
+                          color={vault.isActive ? "success" : "warning"}
+                          variant="flat"
+                          size="sm"
+                        >
+                          {vault.isActive ? "ACTIVE" : "INACTIVE"}
+                        </Chip>
+                        <Chip color={roleColor} variant="flat" size="sm">
+                          {roleLabel}
+                        </Chip>
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -773,13 +794,32 @@ const Vaults = () => {
                   <div className="flex justify-between mb-2">
                     <span className="text-sm text-gray-400">Current</span>
                     <span className="font-semibold">
-                      {formData.approvalThreshold} of {formData.guardians.length + 1}
+                      {formData.approvalThreshold} of {maxApprovalThreshold}
                     </span>
+                  </div>
+                  <div className="mb-3 flex justify-end">
+                    <input
+                      type="number"
+                      min={1}
+                      max={maxApprovalThreshold}
+                      step={1}
+                      value={formData.approvalThreshold}
+                      onChange={(event) => {
+                        const raw = Number(event.target.value);
+                        if (Number.isNaN(raw)) return;
+                        const next = Math.min(maxApprovalThreshold, Math.max(1, raw));
+                        setFormData({
+                          ...formData,
+                          approvalThreshold: next,
+                        });
+                      }}
+                      className="h-9 w-24 rounded-lg border border-gray-700/80 bg-gray-900/75 px-3 text-right text-sm text-gray-100 outline-none transition-colors hover:border-gray-600 focus:border-brand-700/70"
+                    />
                   </div>
                   <input
                     type="range"
                     min={1}
-                    max={Math.max(1, formData.guardians.length + 1)}
+                    max={maxApprovalThreshold}
                     step={1}
                     value={formData.approvalThreshold}
                     onChange={(event) =>

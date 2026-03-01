@@ -1,16 +1,17 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { HeroUIProvider } from "@heroui/react";
 import { Toaster } from "react-hot-toast";
-import LandingPage from "./pages/LandingPage";
-import Dashboard from "./pages/Dashboard";
-import Vaults from "./pages/Vaults";
-import Documents from "./pages/Documents";
-import NFTGallery from "./pages/NFTGallery";
-import Profile from "./pages/Profile";
-import AccessCenter from "./pages/AccessCenter";
-import AppLayout from "./layouts/AppLayout";
 import { captureError } from "./services/telemetry.service";
+
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Vaults = lazy(() => import("./pages/Vaults"));
+const Documents = lazy(() => import("./pages/Documents"));
+const NFTGallery = lazy(() => import("./pages/NFTGallery"));
+const Profile = lazy(() => import("./pages/Profile"));
+const AccessCenter = lazy(() => import("./pages/AccessCenter"));
+const AppLayout = lazy(() => import("./layouts/AppLayout"));
 
 function App() {
   useEffect(() => {
@@ -52,17 +53,25 @@ function App() {
   return (
     <HeroUIProvider>
       <Router>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/vaults" element={<Vaults />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="/access" element={<AccessCenter />} />
-            <Route path="/nfts" element={<NFTGallery />} />
-            <Route path="/profile" element={<Profile />} />
-          </Route>
-        </Routes>
+        <Suspense
+          fallback={
+            <div className="min-h-screen flex items-center justify-center bg-[#040306] text-gray-300">
+              <div className="text-sm tracking-wide">Loading SpooVault...</div>
+            </div>
+          }
+        >
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/vaults" element={<Vaults />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="/access" element={<AccessCenter />} />
+              <Route path="/nfts" element={<NFTGallery />} />
+              <Route path="/profile" element={<Profile />} />
+            </Route>
+          </Routes>
+        </Suspense>
         <Toaster
           position="top-right"
           toastOptions={{
