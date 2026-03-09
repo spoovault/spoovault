@@ -98,27 +98,12 @@ const Vaults = () => {
       setLoading(true);
     }
     try {
-      const [vaultsData, docsData, userTokens] = await Promise.all([
-        contractService.fetchVaults(),
-        contractService.fetchDocuments(),
-        contractService.fetchUserTokens(account),
-      ]);
-
-      const accountLower = account.toLowerCase();
-      const tokenVaultIds = new Set<number>(
-        userTokens
-          .map((token) => token.vaultId)
-          .filter((vaultId): vaultId is number => vaultId !== null)
+      const vaultsData = await contractService.fetchVaultsForAccount(account);
+      const docsData = await contractService.fetchDocumentsForVaults(
+        vaultsData.map((vault) => vault.id)
       );
 
-      const visibleVaults = vaultsData.filter((vault) => {
-        const isCreator = vault.creator.toLowerCase() === accountLower;
-        const isGuardian = vault.guardians.some(
-          (guardian) => guardian.toLowerCase() === accountLower
-        );
-        const hasVaultPass = tokenVaultIds.has(vault.id);
-        return isCreator || isGuardian || hasVaultPass;
-      });
+      const visibleVaults = vaultsData;
 
       const visibleVaultSet = new Set<number>(visibleVaults.map((vault) => vault.id));
       const docCounts: Record<number, number> = {};

@@ -303,23 +303,23 @@ const Dashboard = () => {
     loadVersion: number
   ) => {
     try {
-      const docsData = await contractService.fetchDocuments();
+      const docsData = await contractService.fetchDocumentsForVaults(
+        userVaults.map((vault) => vault.id)
+      );
       if (loadVersionRef.current !== loadVersion) {
         return;
       }
-      const userVaultIdSet = new Set<number>(userVaults.map((vault) => vault.id));
-      const userDocuments = docsData.filter((doc) => userVaultIdSet.has(doc.vaultId));
-      setDocuments(userDocuments);
+      setDocuments(docsData);
       setStats((prev) => ({
         ...prev,
-        totalDocuments: userDocuments.length,
+        totalDocuments: docsData.length,
       }));
       const cached = readDashboardCache(wallet);
       writeDashboardCache(wallet, {
         vaults: userVaults,
         stats: {
           ...(cached?.stats ?? fallbackStats),
-          totalDocuments: userDocuments.length,
+          totalDocuments: docsData.length,
         },
         issuedPassesForVisibleVaults:
           cached?.issuedPassesForVisibleVaults ?? fallbackIssuedPasses,
@@ -345,28 +345,14 @@ const Dashboard = () => {
     const loadVersion = ++loadVersionRef.current;
     try {
       const [vaultsData, userTokens] = await Promise.all([
-        contractService.fetchVaults(),
+        contractService.fetchVaultsForAccount(account),
         contractService.fetchUserTokens(account),
       ]);
       if (loadVersionRef.current !== loadVersion) {
         return;
       }
 
-      const accountLower = account.toLowerCase();
-      const tokenVaultIds = new Set<number>(
-        userTokens
-          .map((token) => token.vaultId)
-          .filter((vaultId): vaultId is number => vaultId !== null)
-      );
-
-      const userVaults = vaultsData.filter((vault) => {
-        const isCreator = vault.creator.toLowerCase() === accountLower;
-        const isGuardian = vault.guardians.some(
-          (guardian) => guardian.toLowerCase() === accountLower
-        );
-        const hasVaultPass = tokenVaultIds.has(vault.id);
-        return isCreator || isGuardian || hasVaultPass;
-      });
+      const userVaults = vaultsData;
 
       const guardianSet = new Set<string>();
       userVaults.forEach((vault) => {

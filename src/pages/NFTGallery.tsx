@@ -175,24 +175,12 @@ const NFTGallery = () => {
     try {
       const [tokenData, vaultData, supply] = await Promise.all([
         contractService.fetchUserTokens(account),
-        contractService.fetchVaults(),
+        contractService.fetchVaultsForAccount(account),
         contractService.getTotalSupply(),
       ]);
 
       const accountLower = account.toLowerCase();
-      const tokenVaultIds = new Set<number>(
-        tokenData
-          .map((token) => token.vaultId)
-          .filter((vaultId): vaultId is number => vaultId !== null)
-      );
-      const visibleVaults = vaultData.filter((vault) => {
-        const isCreator = vault.creator.toLowerCase() === accountLower;
-        const isGuardian = vault.guardians.some(
-          (guardian) => guardian.toLowerCase() === accountLower
-        );
-        const hasVaultPass = tokenVaultIds.has(vault.id);
-        return isCreator || isGuardian || hasVaultPass;
-      });
+      const visibleVaults = vaultData;
       const guardianVaults = visibleVaults.filter((vault) =>
         vault.guardians.some((guardian) => guardian.toLowerCase() === accountLower)
       );

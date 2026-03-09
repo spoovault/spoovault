@@ -96,6 +96,8 @@ const CONTRACT_ABI = [
   "function tokenURI(uint256 tokenId) external view returns (string)",
   "function totalSupply() external view returns (uint256)",
   "event VaultCreated(uint256 indexed vaultId, address indexed creator, string name)",
+  "event GuardianAdded(uint256 indexed vaultId, address indexed guardian)",
+  "event GuardianRemoved(uint256 indexed vaultId, address indexed guardian)",
   "event DocumentAdded(uint256 indexed documentId, uint256 indexed vaultId, string ipfsHash)",
   "event AccessRequested(uint256 indexed requestId, uint256 indexed documentId, address indexed requester)",
   "event AccessApproved(uint256 indexed requestId, address indexed approver)",
@@ -266,6 +268,15 @@ const getLogChunkSize = (): number => {
   return 2000;
 };
 
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
 const EVENT_LOG_CACHE_PREFIX = "spoovault-event-log-cache";
 const EVENT_LOG_CACHE_VERSION = 1;
 
@@ -288,12 +299,16 @@ interface EventLogCachePayload {
   chainId: number;
   contractAddress: string;
   eventName: string;
+  filterKey?: string;
   lastSyncedBlock: number;
   logs: EventLogCacheRecord[];
 }
 
 interface EventLogQueryOptions {
   tail?: number;
+  filters?: Array<
+    string | number | bigint | null | Array<string | number | bigint | null>
+  >;
 }
 
 const getConfiguredChainId = (): number => {
@@ -304,23 +319,31 @@ const getConfiguredChainId = (): number => {
   return 0;
 };
 
-const getEventLogCacheKey = (eventName: string, contractAddress: string): string => {
+const getEventLogCacheKey = (
+  eventName: string,
+  contractAddress: string,
+  filterKey?: string
+): string => {
   return [
     EVENT_LOG_CACHE_PREFIX,
     EVENT_LOG_CACHE_VERSION,
     getConfiguredChainId(),
     contractAddress.toLowerCase(),
     eventName,
+    filterKey || "all",
   ].join(":");
 };
 
 const readEventLogCache = (
   eventName: string,
-  contractAddress: string
+  contractAddress: string,
+  filterKey?: string
 ): EventLogCachePayload | null => {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(getEventLogCacheKey(eventName, contractAddress));
+    const raw = window.localStorage.getItem(
+      getEventLogCacheKey(eventName, contractAddress, filterKey)
+    );
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as EventLogCachePayload;
@@ -330,6 +353,7 @@ const readEventLogCache = (
       parsed.chainId !== getConfiguredChainId() ||
       parsed.contractAddress.toLowerCase() !== contractAddress.toLowerCase() ||
       parsed.eventName !== eventName ||
+      (filterKey && parsed.filterKey !== filterKey) ||
       !Array.isArray(parsed.logs)
     ) {
       return null;
@@ -344,7 +368,11 @@ const readEventLogCache = (
 const writeEventLogCache = (
   eventName: string,
   contractAddress: string,
-  payload: Omit<EventLogCachePayload, "version" | "chainId" | "contractAddress" | "eventName">
+  payload: Omit<
+    EventLogCachePayload,
+    "version" | "chainId" | "contractAddress" | "eventName"
+  >,
+  filterKey?: string
 ): void => {
   if (typeof window === "undefined") return;
   try {
@@ -353,10 +381,11 @@ const writeEventLogCache = (
       chainId: getConfiguredChainId(),
       contractAddress: contractAddress.toLowerCase(),
       eventName,
+      filterKey,
       ...payload,
     };
     window.localStorage.setItem(
-      getEventLogCacheKey(eventName, contractAddress),
+      getEventLogCacheKey(eventName, contractAddress, filterKey),
       JSON.stringify(value)
     );
   } catch {
@@ -425,6 +454,34 @@ const getFromBlock = async (): Promise<number> => {
   throw new Error(lastError || "Failed to determine fromBlock");
 };
 
+const normalizeFilterValue = (
+  value: string | number | bigint | null
+): string | bigint | null => {
+  if (value === null) return null;
+  if (typeof value === "number") return BigInt(value);
+  return value;
+};
+
+const normalizeFilterValues = (
+  filters: EventLogQueryOptions["filters"]
+): Array<string | bigint | null | Array<string | bigint | null>> | undefined => {
+  if (!filters) return undefined;
+  return filters.map((filter) => {
+    if (Array.isArray(filter)) {
+      return filter.map((value) => normalizeFilterValue(value));
+    }
+    return normalizeFilterValue(filter);
+  });
+};
+
+const toFilterKey = (topics: (string | string[] | null)[]): string => {
+  try {
+    return JSON.stringify(topics);
+  } catch {
+    return "all";
+  }
+};
+
 const getEventLogs = async (
   eventName: string,
   options?: EventLogQueryOptions
@@ -435,10 +492,12 @@ const getEventLogs = async (
   if (!event) {
     throw new Error(`Event ${eventName} not found in ABI`);
   }
-  const topics = iface.encodeFilterTopics(event, []);
+  const normalizedFilters = normalizeFilterValues(options?.filters) ?? [];
+  const topics = iface.encodeFilterTopics(event, normalizedFilters);
+  const filterKey = toFilterKey(topics);
   let logs: ethers.Log[] = [];
   const fromBlock = await getFromBlock();
-  const cached = readEventLogCache(eventName, address);
+  const cached = readEventLogCache(eventName, address, filterKey);
   const cachedLogs = cached
     ? cached.logs.map(fromCacheRecord).filter((log) => log.blockNumber >= fromBlock)
     : [];
@@ -470,10 +529,15 @@ const getEventLogs = async (
         logs.push(...chunk);
       }
       logs = sortLogsAscending(logs);
-      writeEventLogCache(eventName, address, {
-        lastSyncedBlock: toBlock,
-        logs: logs.map(toCacheRecord),
-      });
+      writeEventLogCache(
+        eventName,
+        address,
+        {
+          lastSyncedBlock: toBlock,
+          logs: logs.map(toCacheRecord),
+        },
+        filterKey
+      );
       lastError = null;
       break;
     } catch (error: any) {
@@ -729,6 +793,49 @@ const burnAccessToken = async (tokenId: number): Promise<void> => {
   await waitForReceipt(tx);
 };
 
+const mapVaultData = (vault: any): VaultData => ({
+  id: Number(vault[0]),
+  creator: vault[1],
+  name: vault[2],
+  description: vault[3],
+  guardians: vault[4],
+  approvalThreshold: Number(vault[5]),
+  isActive: vault[6],
+  createdAt: Number(vault[7]),
+});
+
+const mapDocumentData = (doc: any): DocumentData => ({
+  id: Number(doc[0]),
+  vaultId: Number(doc[1]),
+  encryptedMetadata: doc[2],
+  ipfsHash: doc[3],
+  uploadedBy: doc[4],
+  uploadedAt: Number(doc[5]),
+  requiredAccess: Number(doc[6]),
+});
+
+const fetchVaultsByIds = async (vaultIds: number[]): Promise<VaultData[]> => {
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  const uniqueIds = Array.from(new Set(vaultIds)).filter((id) => id > 0);
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const vaults = await Promise.all(
+    uniqueIds.map(async (id) => {
+      try {
+        const vault = await contract.getVault(id);
+        return mapVaultData(vault);
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return vaults.filter((vault): vault is VaultData => vault !== null);
+};
+
 const fetchVaults = async (): Promise<VaultData[]> => {
   await ensureContractDeployed();
   const contract = ensureReadContract();
@@ -738,16 +845,7 @@ const fetchVaults = async (): Promise<VaultData[]> => {
   );
 
   const vaults = await Promise.all(ids.map((id) => contract.getVault(id)));
-  return vaults.map((vault) => ({
-    id: Number(vault[0]),
-    creator: vault[1],
-    name: vault[2],
-    description: vault[3],
-    guardians: vault[4],
-    approvalThreshold: Number(vault[5]),
-    isActive: vault[6],
-    createdAt: Number(vault[7]),
-  }));
+  return vaults.map((vault) => mapVaultData(vault));
 };
 
 const fetchDocuments = async (): Promise<DocumentData[]> => {
@@ -762,15 +860,103 @@ const fetchDocuments = async (): Promise<DocumentData[]> => {
     ids.map((id) => contract.documents(id))
   );
 
-  return documents.map((doc) => ({
-    id: Number(doc[0]),
-    vaultId: Number(doc[1]),
-    encryptedMetadata: doc[2],
-    ipfsHash: doc[3],
-    uploadedBy: doc[4],
-    uploadedAt: Number(doc[5]),
-    requiredAccess: Number(doc[6]),
-  }));
+  return documents.map((doc) => mapDocumentData(doc));
+};
+
+const fetchDocumentsForVaults = async (vaultIds: number[]): Promise<DocumentData[]> => {
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  const uniqueVaultIds = Array.from(new Set(vaultIds)).filter((id) => id > 0);
+  if (uniqueVaultIds.length === 0) {
+    return [];
+  }
+
+  const vaultIdChunks = chunkArray(uniqueVaultIds, 20);
+  const logGroups = await Promise.all(
+    vaultIdChunks.map((chunk) =>
+      getEventLogs("DocumentAdded", {
+        filters: [null, chunk.map((id) => BigInt(id)), null],
+      })
+    )
+  );
+
+  const documentIds = new Set<number>();
+  logGroups.flat().forEach((entry) => {
+    documentIds.add(Number(entry.parsed.args.documentId));
+  });
+
+  if (documentIds.size === 0) {
+    return [];
+  }
+
+  const documents = await Promise.all(
+    Array.from(documentIds).map((id) => contract.documents(id))
+  );
+  return documents.map((doc) => mapDocumentData(doc));
+};
+
+const fetchVaultsForAccount = async (
+  account: string,
+  options?: { tokenVaultIds?: number[] }
+): Promise<VaultData[]> => {
+  if (!account) return [];
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  const accountLower = account.toLowerCase();
+
+  const [createdLogs, guardianLogs] = await Promise.all([
+    getEventLogs("VaultCreated", { filters: [null, accountLower] }),
+    getEventLogs("GuardianAdded", { filters: [null, accountLower] }),
+  ]);
+
+  const vaultIds = new Set<number>();
+  createdLogs.forEach((entry) => vaultIds.add(Number(entry.parsed.args.vaultId)));
+  guardianLogs.forEach((entry) => vaultIds.add(Number(entry.parsed.args.vaultId)));
+
+  if (options?.tokenVaultIds?.length) {
+    options.tokenVaultIds
+      .filter((id) => id > 0)
+      .forEach((id) => vaultIds.add(id));
+  } else {
+    const mintedLogs = await getEventLogs("NFTMinted", {
+      filters: [null, accountLower, null],
+    });
+    mintedLogs.forEach((entry) => vaultIds.add(Number(entry.parsed.args.vaultId)));
+  }
+
+  const candidateVaults = await fetchVaultsByIds(Array.from(vaultIds));
+  if (candidateVaults.length === 0) {
+    return [];
+  }
+
+  const tokenCandidates = candidateVaults.filter((vault) => {
+    const isCreator = vault.creator.toLowerCase() === accountLower;
+    const isGuardian = vault.guardians.some(
+      (guardian) => guardian.toLowerCase() === accountLower
+    );
+    return !isCreator && !isGuardian;
+  });
+
+  const tokenChecks = await Promise.all(
+    tokenCandidates.map(async (vault) => {
+      try {
+        const hasToken = await contract.hasVaultToken(account, vault.id);
+        return [vault.id, Boolean(hasToken)] as const;
+      } catch {
+        return [vault.id, false] as const;
+      }
+    })
+  );
+  const tokenMap = new Map<number, boolean>(tokenChecks);
+
+  return candidateVaults.filter((vault) => {
+    const isCreator = vault.creator.toLowerCase() === accountLower;
+    const isGuardian = vault.guardians.some(
+      (guardian) => guardian.toLowerCase() === accountLower
+    );
+    const hasToken = tokenMap.get(vault.id) ?? false;
+    return isCreator || isGuardian || hasToken;
+  });
 };
 
 const getTotalSupply = async (): Promise<number> => {
@@ -1086,7 +1272,10 @@ const fetchUserTokens = async (account: string): Promise<TokenData[]> => {
   await ensureContractDeployed();
   const contract = ensureReadContract();
 
-  const mintedLogs = await getEventLogs("NFTMinted");
+  const accountLower = account.toLowerCase();
+  const mintedLogs = await getEventLogs("NFTMinted", {
+    filters: [null, accountLower, null],
+  });
   const mintedByToken = new Map<number, { vaultId: number; blockNumber: number }>();
   for (const entry of mintedLogs) {
     const tokenId = Number(entry.parsed.args.tokenId);
@@ -1097,7 +1286,6 @@ const fetchUserTokens = async (account: string): Promise<TokenData[]> => {
   }
 
   const blockCache = new Map<number, number>();
-  const accountLower = account.toLowerCase();
 
   const tokens = await Promise.all(
     Array.from(mintedByToken.entries()).map(async ([tokenId, mintedInfo]) => {
@@ -1146,31 +1334,42 @@ const getActivePassCountByVault = async (
   }
 
   const targetVaultIds = new Set<number>(vaultIds);
-  const [mintedLogs, burnedLogs] = await Promise.all([
-    getEventLogs("NFTMinted"),
-    getEventLogs("NFTBurned"),
-  ]);
-
-  const burnedTokenIds = new Set<number>(
-    burnedLogs.map((entry) => Number(entry.parsed.args.tokenId))
+  const vaultIdChunks = chunkArray(vaultIds, 20);
+  const mintGroups = await Promise.all(
+    vaultIdChunks.map((chunk) =>
+      getEventLogs("NFTMinted", {
+        filters: [null, null, chunk.map((id) => BigInt(id))],
+      })
+    )
   );
+  const mintedLogs = mintGroups.flat();
 
   const counts: Record<number, number> = {};
   vaultIds.forEach((vaultId) => {
     counts[vaultId] = 0;
   });
 
-  for (const entry of mintedLogs) {
-    const tokenId = Number(entry.parsed.args.tokenId);
-    const vaultId = Number(entry.parsed.args.vaultId);
-    if (!targetVaultIds.has(vaultId)) {
-      continue;
-    }
-    if (burnedTokenIds.has(tokenId)) {
-      continue;
-    }
+  const contract = ensureReadContract();
+  const tokenChecks = await Promise.all(
+    mintedLogs.map(async (entry) => {
+      const tokenId = Number(entry.parsed.args.tokenId);
+      const vaultId = Number(entry.parsed.args.vaultId);
+      if (!targetVaultIds.has(vaultId)) {
+        return null;
+      }
+      try {
+        await contract.ownerOf(tokenId);
+        return vaultId;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  tokenChecks.forEach((vaultId) => {
+    if (vaultId === null) return;
     counts[vaultId] = (counts[vaultId] || 0) + 1;
-  }
+  });
 
   return counts;
 };
@@ -1278,7 +1477,10 @@ export const contractService = {
   mintAccessToken,
   burnAccessToken,
   fetchVaults,
+  fetchVaultsByIds,
+  fetchVaultsForAccount,
   fetchDocuments,
+  fetchDocumentsForVaults,
   fetchPendingInvites,
   fetchUserTokens,
   getActivePassCountByVault,
