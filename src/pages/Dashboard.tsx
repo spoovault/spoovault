@@ -333,6 +333,39 @@ const Dashboard = () => {
     }
   };
 
+  const loadPassSupplyForVisibleVaults = async (
+    wallet: string,
+    userVaults: VaultData[],
+    fallbackStats: DashboardStats,
+    fallbackApprovals: PendingApprovalData[],
+    loadVersion: number
+  ) => {
+    try {
+      const passSupplyByVault = await contractService.getActivePassCountByVault(
+        userVaults.map((vault) => vault.id)
+      );
+      if (loadVersionRef.current !== loadVersion) {
+        return;
+      }
+
+      const issuedPasses = Object.values(passSupplyByVault).reduce(
+        (sum, count) => sum + count,
+        0
+      );
+      setIssuedPassesForVisibleVaults(issuedPasses);
+
+      const cached = readDashboardCache(wallet);
+      writeDashboardCache(wallet, {
+        vaults: cached?.vaults ?? userVaults,
+        stats: cached?.stats ?? fallbackStats,
+        issuedPassesForVisibleVaults: issuedPasses,
+        pendingApprovals: cached?.pendingApprovals ?? fallbackApprovals,
+      });
+    } catch (error) {
+      captureError("dashboard.loadPassSupply", error, { account: wallet });
+    }
+  };
+
   const loadDashboardData = async (options?: { silent?: boolean }) => {
     if (!account) {
       setLoading(false);
@@ -360,16 +393,7 @@ const Dashboard = () => {
           guardianSet.add(guardian.toLowerCase());
         });
       });
-      const passSupplyByVault = await contractService.getActivePassCountByVault(
-        userVaults.map((vault) => vault.id)
-      );
-      if (loadVersionRef.current !== loadVersion) {
-        return;
-      }
-      const issuedPasses = Object.values(passSupplyByVault).reduce(
-        (sum, count) => sum + count,
-        0
-      );
+      const issuedPasses = 0;
 
       const baseStats: DashboardStats = {
         totalVaults: userVaults.length,
@@ -406,6 +430,9 @@ const Dashboard = () => {
       window.setTimeout(() => {
         void loadRecentActivity(account, loadVersion);
       }, 320);
+      window.setTimeout(() => {
+        void loadPassSupplyForVisibleVaults(account, userVaults, baseStats, [], loadVersion);
+      }, 80);
     } catch (error) {
       console.error("Error loading dashboard data:", error);
       captureError("dashboard.loadData", error, { account: account || "" });

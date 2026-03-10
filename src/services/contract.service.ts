@@ -488,9 +488,14 @@ const getEventLogs = async (
 ): Promise<ParsedLogEntry[]> => {
   const address = getContractAddress();
   const iface = getInterface();
-  const event = iface.getEvent(eventName);
+  let event: ethers.EventFragment | null = null;
+  try {
+    event = iface.getEvent(eventName);
+  } catch {
+    return [];
+  }
   if (!event) {
-    throw new Error(`Event ${eventName} not found in ABI`);
+    return [];
   }
   const normalizedFilters = normalizeFilterValues(options?.filters) ?? [];
   const topics = iface.encodeFilterTopics(event, normalizedFilters);

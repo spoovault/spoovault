@@ -75,7 +75,7 @@ const Profile = () => {
       }
 
       const inviteVaultIds = new Set<number>(sorted.map((invite) => invite.vaultId));
-      const vaults = await contractService.fetchVaults();
+      const vaults = await contractService.fetchVaultsByIds(Array.from(inviteVaultIds));
       const contextMap: Record<number, InviteVaultContext> = {};
       vaults.forEach((vault) => {
         if (!inviteVaultIds.has(vault.id)) return;
