@@ -58,3 +58,4 @@ This document tracks progress, updates, and code reviews.
 * Update 940 - Signed off on 2026-06-04T02:51:44.924Z
 * Update 947 - Signed off on 2026-06-06T08:47:28.852Z
 * Update 951 - Signed off on 2026-06-07T18:55:54.445Z
+* Update 971 - Signed off on 2026-06-15T16:37:33.322Z
