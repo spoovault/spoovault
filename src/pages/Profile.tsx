@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardBody, CardHeader, Button, Input, Chip } from "@heroui/react";
-import { FiUser, FiSliders, FiSave, FiUsers, FiClock, FiCheckCircle } from "react-icons/fi";
+import { FiUser, FiSliders, FiSave, FiUsers, FiClock, FiCheckCircle, FiKey } from "react-icons/fi";
 import { useWeb3 } from "../context/Web3Context";
 import { formatDate, shortenAddress } from "../utils/helpers";
 import { toast } from "react-hot-toast";
@@ -21,6 +21,10 @@ const Profile = () => {
   const [inviteVaultContextById, setInviteVaultContextById] = useState<Record<number, InviteVaultContext>>({});
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [acceptingVaultId, setAcceptingVaultId] = useState<number | null>(null);
+  const [publicKey, setPublicKey] = useState("");
+  const [checkingKey, setCheckingKey] = useState(false);
+  const [registeringKey, setRegisteringKey] = useState(false);
+
   const profileInputClassNames = {
     inputWrapper: "bg-gray-900/75 border border-gray-700/80 shadow-none data-[hover=true]:border-gray-600",
     input: "text-sm text-gray-100",
@@ -47,12 +51,30 @@ const Profile = () => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  const loadPublicKeyStatus = async () => {
+    if (!account || !isFujiNetwork) {
+      setPublicKey("");
+      return;
+    }
+    setCheckingKey(true);
+    try {
+      const pubKey = await contractService.getUserPublicKey(account);
+      setPublicKey(pubKey);
+    } catch {
+      setPublicKey("");
+    } finally {
+      setCheckingKey(false);
+    }
+  };
+
   useEffect(() => {
     if (isConnected && provider) {
       contractService.initialize(provider, signer ?? undefined);
       loadPendingInvites();
+      loadPublicKeyStatus();
     } else {
       setPendingInvites([]);
+      setPublicKey("");
     }
   }, [account, isConnected, provider, signer, isFujiNetwork]);
 
@@ -137,16 +159,49 @@ const Profile = () => {
     }
   };
 
+  const handleRegisterPublicKey = async () => {
+    if (!isConnected) {
+      toast.error("Please connect your wallet first");
+      await connect();
+      return;
+    }
+    if (!isFujiNetwork) {
+      toast.error("Please switch to Avalanche Fuji network");
+      return;
+    }
+    if (!window.ethereum) {
+      toast.error("Web3 provider not found");
+      return;
+    }
+    setRegisteringKey(true);
+    try {
+      const pubKey = await window.ethereum.request({
+        method: "eth_getEncryptionPublicKey",
+        params: [account],
+      });
+      if (!pubKey) {
+        throw new Error("Failed to retrieve public key from wallet");
+      }
+      await contractService.registerPublicKey(pubKey);
+      toast.success("Encryption public key registered on-chain!");
+      setPublicKey(pubKey);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to register public key");
+    } finally {
+      setRegisteringKey(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Profile</h1>
-          <p className="text-gray-400">Manage your preferences</p>
+          <p className="text-gray-400">Manage your preferences and secure keys</p>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card className="border border-gray-800 bg-gray-900/40 backdrop-blur-sm">
           <CardHeader className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 flex items-center justify-center">
@@ -170,6 +225,49 @@ const Profile = () => {
             <div className="text-sm text-gray-400">
               Wallet: {isConnected ? shortenAddress(account || "", 6) : "Not connected"}
             </div>
+          </CardBody>
+        </Card>
+
+        <Card className="border border-gray-800 bg-gray-900/40 backdrop-blur-sm">
+          <CardHeader className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 flex items-center justify-center">
+              <FiKey className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Encryption Key</h2>
+              <p className="text-sm text-gray-400">On-chain key for secure sharing</p>
+            </div>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            {checkingKey ? (
+              <p className="text-xs text-gray-400">Checking key status...</p>
+            ) : publicKey ? (
+              <div className="space-y-2">
+                <Chip color="success" variant="flat" size="sm">
+                  REGISTERED
+                </Chip>
+                <p className="text-xs text-gray-400 font-mono break-all line-clamp-3">
+                  {publicKey}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Chip color="warning" variant="flat" size="sm">
+                  NOT REGISTERED
+                </Chip>
+                <p className="text-xs text-gray-400">
+                  Register your wallet's encryption public key to receive encrypted document keys.
+                </p>
+                <Button
+                  className={buttonClasses.primarySm}
+                  isLoading={registeringKey}
+                  isDisabled={checkingKey}
+                  onPress={handleRegisterPublicKey}
+                >
+                  Register Encryption Key
+                </Button>
+              </div>
+            )}
           </CardBody>
         </Card>
 

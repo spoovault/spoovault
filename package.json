@@ -8,10 +8,16 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:smoke": "node scripts/smoke-check.mjs",
-    "test:baseline": "node scripts/test-baseline.mjs"
+    "test:baseline": "node scripts/test-baseline.mjs",
+    "test:sss": "node scripts/test-sss.mjs",
+    "deploy:contract": "node scripts/deploy.mjs",
+    "proxy:pinata": "node scripts/pinata-proxy.mjs"
   },
   "dependencies": {
     "@heroui/react": "^2.0.0",
+    "@metamask/eth-sig-util": "^8.2.0",
+    "@stellar/freighter-api": "^2.0.0",
+    "@stellar/stellar-sdk": "^12.1.0",
     "axios": "^1.6.0",
     "crypto-js": "^4.2.0",
     "date-fns": "^3.6.0",
@@ -22,6 +28,7 @@
     "react-hot-toast": "^2.4.1",
     "react-icons": "^4.11.0",
     "react-router-dom": "^6.20.0",
+    "tweetnacl": "^1.0.3",
     "web3.storage": "^4.5.5",
     "zustand": "^4.5.0"
   },

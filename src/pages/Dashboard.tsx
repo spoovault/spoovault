@@ -36,6 +36,7 @@ import { formatDistanceToNow } from "date-fns";
 import { buttonClasses } from "../utils/buttonClasses";
 import { shortenAddress } from "../utils/helpers";
 import { captureError } from "../services/telemetry.service";
+import { encryptWithPublicKey } from "../utils/crypto";
 
 const DASHBOARD_CACHE_PREFIX = "spoovault-dashboard-cache";
 const DASHBOARD_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
@@ -448,7 +449,49 @@ const Dashboard = () => {
   const handleApproveRequest = async (requestId: number) => {
     setApprovingRequestId(requestId);
     try {
-      await contractService.approveAccess(requestId);
+      const approvalInfo = pendingApprovals.find((a) => a.requestId === requestId);
+      if (!approvalInfo) {
+        throw new Error("Approval request info not found");
+      }
+
+      // Check if there is an encrypted share for this guardian
+      const encryptedShare = await contractService.getEncryptedGuardianShare(
+        approvalInfo.documentId,
+        account || ""
+      );
+
+      let encryptedShareForBeneficiary = "";
+      if (encryptedShare && encryptedShare.trim()) {
+        if (!window.ethereum) {
+          throw new Error("Web3 provider not found. Please connect your wallet.");
+        }
+
+        toast("Decrypting key share in your wallet...");
+        const decryptedShare = await window.ethereum.request({
+          method: "eth_decrypt",
+          params: [encryptedShare, account],
+        });
+
+        if (!decryptedShare) {
+          throw new Error("Failed to decrypt share with wallet");
+        }
+
+        // Fetch beneficiary's public key
+        const beneficiaryPubKey = await contractService.getUserPublicKey(approvalInfo.requester);
+        if (!beneficiaryPubKey) {
+          throw new Error("The beneficiary has not registered their encryption public key. They must register it in their Profile page first.");
+        }
+
+        // Re-encrypt the share for the beneficiary
+        encryptedShareForBeneficiary = encryptWithPublicKey(decryptedShare, beneficiaryPubKey);
+      }
+
+      if (encryptedShareForBeneficiary) {
+        await contractService.approveAccess(requestId, encryptedShareForBeneficiary);
+      } else {
+        await contractService.approveAccess(requestId);
+      }
+
       toast.success(`Approved request #${requestId}`);
       await loadDashboardData();
     } catch (error: any) {

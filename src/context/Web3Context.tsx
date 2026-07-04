@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { ethers } from "ethers";
 import { toast } from "react-hot-toast";
 import { contractService } from "../services/contract.service";
+import { stellarService } from "../services/stellar.service";
 
 const CONTRACT_ABI = [
   "function createVault(string name, string description, address[] guardians, uint256 approvalThreshold) external returns (uint256)",
@@ -35,6 +36,8 @@ interface Web3ContextType {
   disconnect: (options?: { notify?: boolean }) => void;
   switchToFuji: () => Promise<void>;
   isFujiNetwork: boolean;
+  ecosystem: "avalanche" | "stellar";
+  setEcosystem: (eco: "avalanche" | "stellar") => void;
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
@@ -47,6 +50,22 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
   const [contract, setContract] = useState<ethers.Contract | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  const [ecosystem, setEcosystemState] = useState<"avalanche" | "stellar">(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("spoovault-ecosystem");
+      if (stored === "stellar") return "stellar";
+    }
+    return "avalanche";
+  });
+
+  const setEcosystem = (eco: "avalanche" | "stellar") => {
+    setEcosystemState(eco);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("spoovault-ecosystem", eco);
+    }
+    disconnect({ notify: false });
+  };
 
   const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
   const FUJI_CHAIN_ID = 43113;
@@ -89,6 +108,18 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
   }, [CONTRACT_ADDRESS]);
 
   const checkConnection = useCallback(async () => {
+    if (ecosystem === "stellar") {
+      try {
+        const address = await stellarService.initialize();
+        if (address) {
+          setAccount(address);
+        }
+      } catch (error) {
+        console.error("Stellar connection check failed:", error);
+      }
+      return;
+    }
+
     if (typeof window.ethereum === "undefined") {
       return;
     }
@@ -117,13 +148,14 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Error checking connection:", error);
     }
-  }, [initContract]);
+  }, [initContract, ecosystem]);
 
   useEffect(() => {
     checkConnection();
 
     if (window.ethereum) {
       const handleAccountsChanged = (accounts: string[]) => {
+        if (ecosystem === "stellar") return;
         if (accounts.length === 0) {
           setProvider(null);
           setSigner(null);
@@ -137,6 +169,7 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
       };
 
       const handleChainChanged = () => {
+        if (ecosystem === "stellar") return;
         checkConnection();
       };
 
@@ -150,9 +183,27 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
         }
       };
     }
-  }, [checkConnection]);
+  }, [checkConnection, ecosystem]);
 
   const connect = async () => {
+    if (ecosystem === "stellar") {
+      setIsConnecting(true);
+      try {
+        const address = await stellarService.connectWallet();
+        setAccount(address);
+        setProvider(null);
+        setSigner(null);
+        setChainId(null);
+        setContract(null);
+        toast.success(`Connected Freighter: ${address.slice(0, 6)}...${address.slice(-4)}`);
+      } catch (error: any) {
+        toast.error(error.message || "Failed to connect Freighter wallet");
+      } finally {
+        setIsConnecting(false);
+      }
+      return;
+    }
+
     if (typeof window.ethereum === "undefined") {
       toast.error("Wallet not detected in browser");
       openWalletAppOrInstall();
@@ -201,6 +252,9 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
     if (!hadSession) return;
 
     setIsDisconnecting(true);
+    if (ecosystem === "stellar") {
+      stellarService.clear();
+    }
     setProvider(null);
     setSigner(null);
     setAccount(null);
@@ -211,9 +265,10 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
       toast.success("Disconnected");
     }
     window.setTimeout(() => setIsDisconnecting(false), 300);
-  }, [account, contract, isDisconnecting, provider, signer]);
+  }, [account, contract, isDisconnecting, provider, signer, ecosystem]);
 
   const switchToFuji = async () => {
+    if (ecosystem === "stellar") return;
     if (!window.ethereum) {
       toast.error("Wallet not detected in browser");
       openWalletAppOrInstall();
@@ -262,13 +317,15 @@ export const Web3Provider = ({ children }: { children: ReactNode }) => {
     signer,
     account,
     chainId,
-    isConnected: !!account && !!provider,
+    isConnected: !!account,
     isConnecting,
     contract,
     connect,
     disconnect,
     switchToFuji,
-    isFujiNetwork: chainId === FUJI_CHAIN_ID,
+    isFujiNetwork: ecosystem === "stellar" ? true : chainId === FUJI_CHAIN_ID,
+    ecosystem,
+    setEcosystem,
   };
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;

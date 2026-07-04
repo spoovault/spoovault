@@ -8,8 +8,11 @@ const PINATA_API_SECRET = import.meta.env.VITE_PINATA_API_SECRET;
 const IPFS_GATEWAY =
   import.meta.env.VITE_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
 
+const IPFS_PROXY_URL =
+  (import.meta.env.VITE_IPFS_PROXY_URL as string | undefined)?.trim() || "";
+
 const isConfigured = (): boolean => {
-  return !!PINATA_JWT || (!!PINATA_API_KEY && !!PINATA_API_SECRET);
+  return !!IPFS_PROXY_URL || !!PINATA_JWT || (!!PINATA_API_KEY && !!PINATA_API_SECRET);
 };
 
 const getURL = (hash: string): string => {
@@ -48,16 +51,29 @@ const uploadFile = async (
   }
 
   try {
-    const response = await axios.post(
-      `${PINATA_API_URL}/pinning/pinFileToIPFS`,
-      formData,
-      {
-        headers: buildAuthHeaders(),
-        timeout: 90000,
-        maxBodyLength: Infinity,
-        signal,
-      }
-    );
+    let response;
+    if (IPFS_PROXY_URL) {
+      response = await axios.post(
+        `${IPFS_PROXY_URL}/api/ipfs/pin-file`,
+        formData,
+        {
+          timeout: 90000,
+          maxBodyLength: Infinity,
+          signal,
+        }
+      );
+    } else {
+      response = await axios.post(
+        `${PINATA_API_URL}/pinning/pinFileToIPFS`,
+        formData,
+        {
+          headers: buildAuthHeaders(),
+          timeout: 90000,
+          maxBodyLength: Infinity,
+          signal,
+        }
+      );
+    }
 
     return {
       hash: response.data.IpfsHash,

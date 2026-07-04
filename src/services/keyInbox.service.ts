@@ -33,8 +33,11 @@ interface PinRow {
   };
 }
 
+const IPFS_PROXY_URL =
+  (import.meta.env.VITE_IPFS_PROXY_URL as string | undefined)?.trim() || "";
+
 const isConfigured = (): boolean => {
-  return !!PINATA_JWT || (!!PINATA_API_KEY && !!PINATA_API_SECRET);
+  return !!IPFS_PROXY_URL || !!PINATA_JWT || (!!PINATA_API_KEY && !!PINATA_API_SECRET);
 };
 
 const buildAuthHeaders = (): Record<string, string> => {
@@ -70,32 +73,59 @@ const sendKeyEnvelope = async (payload: KeyEnvelopePayload): Promise<string> => 
     issuedBy,
   };
 
-  const response = await axios.post(
-    `${PINATA_API_URL}/pinning/pinJSONToIPFS`,
-    {
-      pinataContent: content,
-      pinataMetadata: {
-        name: ENVELOPE_NAME,
-        keyvalues: {
-          type: "beneficiary_key_envelope",
-          beneficiary,
-          contract,
-          chainId: String(content.chainId),
-          documentId: String(content.documentId),
-          vaultId: String(content.vaultId),
-          issuedBy,
-          issuedAt: content.issuedAt,
+  let response;
+  if (IPFS_PROXY_URL) {
+    response = await axios.post(
+      `${IPFS_PROXY_URL}/api/ipfs/pin-json`,
+      {
+        pinataContent: content,
+        pinataMetadata: {
+          name: ENVELOPE_NAME,
+          keyvalues: {
+            type: "beneficiary_key_envelope",
+            beneficiary,
+            contract,
+            chainId: String(content.chainId),
+            documentId: String(content.documentId),
+            vaultId: String(content.vaultId),
+            issuedBy,
+            issuedAt: content.issuedAt,
+          },
         },
       },
-    },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        ...buildAuthHeaders(),
+      {
+        headers: { "Content-Type": "application/json" },
+        timeout: 30000,
+      }
+    );
+  } else {
+    response = await axios.post(
+      `${PINATA_API_URL}/pinning/pinJSONToIPFS`,
+      {
+        pinataContent: content,
+        pinataMetadata: {
+          name: ENVELOPE_NAME,
+          keyvalues: {
+            type: "beneficiary_key_envelope",
+            beneficiary,
+            contract,
+            chainId: String(content.chainId),
+            documentId: String(content.documentId),
+            vaultId: String(content.vaultId),
+            issuedBy,
+            issuedAt: content.issuedAt,
+          },
+        },
       },
-      timeout: 30000,
-    }
-  );
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...buildAuthHeaders(),
+        },
+        timeout: 30000,
+      }
+    );
+  }
 
   const hash = String(response?.data?.IpfsHash || "");
   if (!hash) {
@@ -119,15 +149,27 @@ const listEnvelopeHashesForBeneficiary = async (
   const matches: string[] = [];
 
   for (let page = 0; page < maxPages && matches.length < maxMatches; page++) {
-    const response = await axios.get(`${PINATA_API_URL}/data/pinList`, {
-      headers: buildAuthHeaders(),
-      params: {
-        status: "pinned",
-        pageLimit,
-        pageOffset: page * pageLimit,
-      },
-      timeout: 30000,
-    });
+    let response;
+    if (IPFS_PROXY_URL) {
+      response = await axios.get(`${IPFS_PROXY_URL}/api/ipfs/pin-list`, {
+        params: {
+          status: "pinned",
+          pageLimit,
+          pageOffset: page * pageLimit,
+        },
+        timeout: 30000,
+      });
+    } else {
+      response = await axios.get(`${PINATA_API_URL}/data/pinList`, {
+        headers: buildAuthHeaders(),
+        params: {
+          status: "pinned",
+          pageLimit,
+          pageOffset: page * pageLimit,
+        },
+        timeout: 30000,
+      });
+    }
 
     const rows = Array.isArray(response?.data?.rows)
       ? (response.data.rows as PinRow[])

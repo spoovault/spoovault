@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { stellarService } from "./stellar.service";
 
 export interface VaultData {
   id: number;
@@ -72,7 +73,9 @@ export interface VaultReleaseState {
 const CONTRACT_ABI = [
   "function createVault(string name, string description, address[] guardians, uint256 approvalThreshold) external returns (uint256)",
   "function addDocument(uint256 vaultId, string encryptedMetadata, string ipfsHash, uint8 requiredAccess) external returns (uint256)",
+  "function addDocument(uint256 vaultId, string encryptedMetadata, string ipfsHash, uint8 requiredAccess, address[] guardiansList, string[] shares) external returns (uint256)",
   "function addDocumentWithReleaseCondition(uint256 vaultId, string encryptedMetadata, string ipfsHash, uint8 requiredAccess, uint8 releaseCondition) external returns (uint256)",
+  "function addDocumentWithReleaseCondition(uint256 vaultId, string encryptedMetadata, string ipfsHash, uint8 requiredAccess, uint8 releaseCondition, address[] guardiansList, string[] shares) external returns (uint256)",
   "function configureVaultRelease(uint256 vaultId, uint256 inactivityPeriod) external",
   "function proveLife(uint256 vaultId) external",
   "function setEmergencyMode(uint256 vaultId, bool enabled) external",
@@ -80,6 +83,7 @@ const CONTRACT_ABI = [
   "function documentReleaseCondition(uint256 documentId) external view returns (uint8)",
   "function requestAccess(uint256 documentId) external returns (uint256)",
   "function approveAccess(uint256 requestId) external",
+  "function approveAccess(uint256 requestId, string encryptedShareForBeneficiary) external",
   "function acceptGuardianInvite(uint256 vaultId) external",
   "function accessRequests(uint256 requestId) external view returns (uint256 requestId, uint256 documentId, address requester, uint8 status, uint256 expiresAt, uint256 createdAt)",
   "function latestRequestId(uint256 documentId, address user) external view returns (uint256)",
@@ -95,6 +99,10 @@ const CONTRACT_ABI = [
   "function ownerOf(uint256 tokenId) external view returns (address)",
   "function tokenURI(uint256 tokenId) external view returns (string)",
   "function totalSupply() external view returns (uint256)",
+  "function registerPublicKey(string publicKey) external",
+  "function userPublicKeys(address user) external view returns (string)",
+  "function getEncryptedGuardianShare(uint256 documentId, address guardian) external view returns (string)",
+  "function getBeneficiaryKeyShare(uint256 requestId, address guardian) external view returns (string)",
   "event VaultCreated(uint256 indexed vaultId, address indexed creator, string name)",
   "event GuardianAdded(uint256 indexed vaultId, address indexed guardian)",
   "event GuardianRemoved(uint256 indexed vaultId, address indexed guardian)",
@@ -105,6 +113,9 @@ const CONTRACT_ABI = [
   "event NFTMinted(uint256 indexed tokenId, address indexed to, uint256 indexed vaultId)",
   "event NFTBurned(uint256 indexed tokenId)",
   "event DocumentReleaseConditionSet(uint256 indexed documentId, uint8 condition)",
+  "event PublicKeyRegistered(address indexed user, string publicKey)",
+  "event GuardianSharesSaved(uint256 indexed documentId)",
+  "event ShareSubmittedForBeneficiary(uint256 indexed requestId, address indexed guardian, string encryptedShare)",
 ];
 
 let provider: ethers.Provider | null = null;
@@ -675,32 +686,58 @@ const addDocument = async (
   encryptedMetadata: string,
   ipfsHash: string,
   requiredAccess: number,
-  releaseCondition = 0
+  releaseCondition = 0,
+  guardiansList?: string[],
+  shares?: string[]
 ): Promise<number> => {
   const contract = ensureWriteContract();
   let tx: any;
+  const hasShares = guardiansList && shares && guardiansList.length > 0 && shares.length > 0;
 
   if (
     releaseCondition !== 0 &&
     contractHasFunction(
       contract,
-      "addDocumentWithReleaseCondition(uint256,string,string,uint8,uint8)"
+      "addDocumentWithReleaseCondition(uint256,string,string,uint8,uint8,address[],string[])"
     )
   ) {
-    tx = await contract.addDocumentWithReleaseCondition(
-      vaultId,
-      encryptedMetadata,
-      ipfsHash,
-      requiredAccess,
-      releaseCondition
-    );
+    if (hasShares) {
+      tx = await contract.addDocumentWithReleaseCondition(
+        vaultId,
+        encryptedMetadata,
+        ipfsHash,
+        requiredAccess,
+        releaseCondition,
+        guardiansList,
+        shares
+      );
+    } else {
+      tx = await contract.addDocumentWithReleaseCondition(
+        vaultId,
+        encryptedMetadata,
+        ipfsHash,
+        requiredAccess,
+        releaseCondition
+      );
+    }
   } else if (releaseCondition === 0) {
-    tx = await contract.addDocument(
-      vaultId,
-      encryptedMetadata,
-      ipfsHash,
-      requiredAccess
-    );
+    if (hasShares && contractHasFunction(contract, "addDocument(uint256,string,string,uint8,address[],string[])")) {
+      tx = await contract.addDocument(
+        vaultId,
+        encryptedMetadata,
+        ipfsHash,
+        requiredAccess,
+        guardiansList,
+        shares
+      );
+    } else {
+      tx = await contract.addDocument(
+        vaultId,
+        encryptedMetadata,
+        ipfsHash,
+        requiredAccess
+      );
+    }
   } else {
     throw new Error(
       "Current contract does not support release-condition policy uploads. Redeploy latest contract."
@@ -752,10 +789,51 @@ const requestAccess = async (documentId: number): Promise<number> => {
   return 0;
 };
 
-const approveAccess = async (requestId: number): Promise<void> => {
+const approveAccess = async (requestId: number, encryptedShareForBeneficiary?: string): Promise<void> => {
   const contract = ensureWriteContract();
-  const tx = await contract.approveAccess(requestId);
+  let tx: any;
+  if (encryptedShareForBeneficiary && contractHasFunction(contract, "approveAccess(uint256,string)")) {
+    tx = await contract.approveAccess(requestId, encryptedShareForBeneficiary);
+  } else {
+    tx = await contract.approveAccess(requestId);
+  }
   await waitForReceipt(tx);
+};
+
+const registerPublicKey = async (publicKey: string): Promise<void> => {
+  const contract = ensureWriteContract();
+  const tx = await contract.registerPublicKey(publicKey);
+  await waitForReceipt(tx);
+};
+
+const getUserPublicKey = async (user: string): Promise<string> => {
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  try {
+    return await contract.userPublicKeys(user);
+  } catch {
+    return "";
+  }
+};
+
+const getEncryptedGuardianShare = async (documentId: number, guardian: string): Promise<string> => {
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  try {
+    return await contract.getEncryptedGuardianShare(documentId, guardian);
+  } catch {
+    return "";
+  }
+};
+
+const getBeneficiaryKeyShare = async (requestId: number, guardian: string): Promise<string> => {
+  await ensureContractDeployed();
+  const contract = ensureReadContract();
+  try {
+    return await contract.getBeneficiaryKeyShare(requestId, guardian);
+  } catch {
+    return "";
+  }
 };
 
 const acceptGuardianInvite = async (vaultId: number): Promise<void> => {
@@ -1470,29 +1548,220 @@ const getRecentActivity = async (limit = 5): Promise<ActivityEvent[]> => {
   return events;
 };
 
+const getEcosystem = (): "avalanche" | "stellar" => {
+  if (typeof window === "undefined") return "avalanche";
+  return (window.localStorage.getItem("spoovault-ecosystem") as "avalanche" | "stellar") || "avalanche";
+};
+
+const proxiedCreateVault = async (
+  name: string,
+  description: string,
+  guardians: string[],
+  approvalThreshold: number
+): Promise<number> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.createVault(name, description, guardians, approvalThreshold);
+  }
+  return createVault(name, description, guardians, approvalThreshold);
+};
+
+const proxiedAddDocument = async (
+  vaultId: number,
+  encryptedMetadata: string,
+  ipfsHash: string,
+  requiredAccess: number,
+  releaseCondition = 0,
+  guardiansList?: string[],
+  shares?: string[]
+): Promise<number> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.addDocument(
+      vaultId,
+      encryptedMetadata,
+      ipfsHash,
+      requiredAccess,
+      releaseCondition,
+      guardiansList,
+      shares
+    );
+  }
+  return addDocument(vaultId, encryptedMetadata, ipfsHash, requiredAccess, releaseCondition, guardiansList, shares);
+};
+
+const proxiedRequestAccess = async (documentId: number): Promise<number> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.requestAccess(documentId);
+  }
+  return requestAccess(documentId);
+};
+
+const proxiedApproveAccess = async (requestId: number, encryptedShareForBeneficiary?: string): Promise<void> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.approveAccess(requestId, encryptedShareForBeneficiary);
+  }
+  return approveAccess(requestId, encryptedShareForBeneficiary);
+};
+
+const proxiedAcceptGuardianInvite = async (vaultId: number): Promise<void> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.acceptGuardianInvite(vaultId);
+  }
+  return acceptGuardianInvite(vaultId);
+};
+
+const proxiedFetchVaultsForAccount = async (
+  account: string,
+  options?: { tokenVaultIds?: number[] }
+): Promise<VaultData[]> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.fetchVaultsForAccount(account) as unknown as Promise<VaultData[]>;
+  }
+  return fetchVaultsForAccount(account, options);
+};
+
+const proxiedFetchDocumentsForVaults = async (vaultIds: number[]): Promise<DocumentData[]> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.fetchDocumentsForVaults(vaultIds) as unknown as Promise<DocumentData[]>;
+  }
+  return fetchDocumentsForVaults(vaultIds);
+};
+
+const proxiedFetchPendingApprovalsForGuardian = async (
+  guardianAddress: string,
+  _limit?: number
+): Promise<PendingApprovalData[]> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.fetchPendingApprovalsForGuardian(guardianAddress) as unknown as Promise<PendingApprovalData[]>;
+  }
+  return fetchPendingApprovalsForGuardian(guardianAddress);
+};
+
+const proxiedGetEncryptedGuardianShare = async (documentId: number, guardian: string): Promise<string> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.getEncryptedGuardianShare(documentId, guardian);
+  }
+  return getEncryptedGuardianShare(documentId, guardian);
+};
+
+const proxiedGetBeneficiaryKeyShare = async (requestId: number, guardian: string): Promise<string> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.getBeneficiaryKeyShare(requestId, guardian);
+  }
+  return getBeneficiaryKeyShare(requestId, guardian);
+};
+
+const proxiedRegisterPublicKey = async (publicKey: string): Promise<void> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.registerPublicKey(publicKey);
+  }
+  return registerPublicKey(publicKey);
+};
+
+const proxiedGetUserPublicKey = async (user: string): Promise<string> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.getUserPublicKey(user);
+  }
+  return getUserPublicKey(user);
+};
+
+const proxiedFetchPendingInvites = async (account: string): Promise<any[]> => {
+  if (getEcosystem() === "stellar") {
+    return stellarService.getPendingInvites(account);
+  }
+  return fetchPendingInvites(account);
+};
+
+const proxiedHasActiveAccess = async (documentId: number, user: string): Promise<boolean> => {
+  if (getEcosystem() === "stellar") {
+    const account = stellarService.getAccount();
+    if (!account) return false;
+    const vaults = await stellarService.fetchVaultsForAccount(account);
+    const docs = await stellarService.fetchDocumentsForVaults(vaults.map(v => v.id));
+    const doc = docs.find(d => d.id === documentId);
+    if (!doc) return false;
+    if (doc.uploadedBy.toLowerCase() === account.toLowerCase()) return true;
+    
+    const vault = vaults.find(v => v.id === doc.vaultId);
+    if (vault?.guardians.some(g => g.toLowerCase() === account.toLowerCase())) return true;
+    
+    try {
+      const requestsRaw = localStorage.getItem("spoovault-stellar-mock-requests");
+      if (requestsRaw) {
+        const requests = JSON.parse(requestsRaw) as any[];
+        return requests.some(
+          r => r.documentId === documentId && r.requester.toLowerCase() === account.toLowerCase() && r.status === 1
+        );
+      }
+    } catch {}
+    return false;
+  }
+  return hasActiveAccess(documentId, user);
+};
+
+const proxiedGetActiveAccessMap = async (
+  user: string,
+  documentIds: number[]
+): Promise<Record<number, boolean>> => {
+  if (getEcosystem() === "stellar") {
+    const entries = await Promise.all(
+      documentIds.map(async (id) => [id, await proxiedHasActiveAccess(id, user)] as const)
+    );
+    return Object.fromEntries(entries);
+  }
+  return getActiveAccessMap(user, documentIds);
+};
+
+const proxiedGetLatestRequestsForUser = async (
+  user: string,
+  documentIds: number[]
+): Promise<Record<number, AccessRequestData | null>> => {
+  if (getEcosystem() === "stellar") {
+    try {
+      const requestsRaw = localStorage.getItem("spoovault-stellar-mock-requests");
+      const requests = requestsRaw ? (JSON.parse(requestsRaw) as any[]) : [];
+      const res: Record<number, AccessRequestData | null> = {};
+      for (const id of documentIds) {
+        const matched = requests.filter(
+          r => r.documentId === id && r.requester.toLowerCase() === user.toLowerCase()
+        );
+        if (matched.length > 0) {
+          matched.sort((a, b) => b.requestId - a.requestId);
+          res[id] = matched[0] as AccessRequestData;
+        } else {
+          res[id] = null;
+        }
+      }
+      return res;
+    } catch {
+      return {};
+    }
+  }
+  return getLatestRequestsForUser(user, documentIds);
+};
+
 export const contractService = {
   initialize,
   clear,
   isReady,
-  createVault,
-  addDocument,
-  requestAccess,
-  approveAccess,
-  acceptGuardianInvite,
+  createVault: proxiedCreateVault,
+  addDocument: proxiedAddDocument,
+  requestAccess: proxiedRequestAccess,
+  approveAccess: proxiedApproveAccess,
+  acceptGuardianInvite: proxiedAcceptGuardianInvite,
   mintAccessToken,
   burnAccessToken,
   fetchVaults,
   fetchVaultsByIds,
-  fetchVaultsForAccount,
+  fetchVaultsForAccount: proxiedFetchVaultsForAccount,
   fetchDocuments,
-  fetchDocumentsForVaults,
-  fetchPendingInvites,
+  fetchDocumentsForVaults: proxiedFetchDocumentsForVaults,
+  fetchPendingInvites: proxiedFetchPendingInvites,
   fetchUserTokens,
   getActivePassCountByVault,
   getTotalSupply,
-  hasActiveAccess,
-  getActiveAccessMap,
-  getLatestRequestsForUser,
+  hasActiveAccess: proxiedHasActiveAccess,
+  getActiveAccessMap: proxiedGetActiveAccessMap,
+  getLatestRequestsForUser: proxiedGetLatestRequestsForUser,
   getDocumentReleaseCondition,
   getDocumentReleaseConditionMap,
   getVaultReleaseState,
@@ -1500,7 +1769,10 @@ export const contractService = {
   configureVaultRelease,
   recordProofOfLife,
   setEmergencyMode,
-  fetchPendingApprovalsForGuardian,
+  fetchPendingApprovalsForGuardian: proxiedFetchPendingApprovalsForGuardian,
   getRecentActivity,
+  registerPublicKey: proxiedRegisterPublicKey,
+  getUserPublicKey: proxiedGetUserPublicKey,
+  getEncryptedGuardianShare: proxiedGetEncryptedGuardianShare,
+  getBeneficiaryKeyShare: proxiedGetBeneficiaryKeyShare,
 };
-

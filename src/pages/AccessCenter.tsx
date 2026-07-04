@@ -44,6 +44,8 @@ import { toast } from "react-hot-toast";
 import { captureError } from "../services/telemetry.service";
 import { keyInboxService } from "../services/keyInbox.service";
 import { keyStoreService } from "../services/keyStore.service";
+// reconstructSecret is available for on-chain SSS share reconstruction when needed
+// import { reconstructSecret } from "../services/secrets.service";
 
 type WordArray = { words: number[]; sigBytes: number };
 type ImportedKeyPayload = {
@@ -93,8 +95,8 @@ const AccessCenter = () => {
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [requestingDocId, setRequestingDocId] = useState<number | null>(null);
   const [fetchingInboxKeys, setFetchingInboxKeys] = useState(false);
+  const [requestingDocId, setRequestingDocId] = useState<number | null>(null);
   const [inboxEnvelopeCount, setInboxEnvelopeCount] = useState(0);
   const [inboxPreviewItems, setInboxPreviewItems] = useState<InboxKeyPreviewItem[]>([]);
   const [documents, setDocuments] = useState<DocumentData[]>([]);
@@ -179,7 +181,23 @@ const AccessCenter = () => {
       if (!documentId || !Number.isFinite(documentId)) {
         throw new Error("Invalid key package: missing documentId");
       }
-      if (!/^[a-fA-F0-9]{64}$/.test(key)) {
+
+      let decryptedKey = key;
+      if (key.includes("ciphertext") && key.includes("ephemPublicKey")) {
+        if (!window.ethereum) {
+          throw new Error("Web3 provider not found. Please connect your wallet.");
+        }
+        toast("Decrypting key package in your wallet...");
+        decryptedKey = await window.ethereum.request({
+          method: "eth_decrypt",
+          params: [key, account],
+        });
+        if (!decryptedKey) {
+          throw new Error("Failed to decrypt key package with wallet");
+        }
+      }
+
+      if (!/^[a-fA-F0-9]{64}$/.test(decryptedKey)) {
         throw new Error("Invalid key package: key format is not recognized");
       }
       if (beneficiary) {
@@ -206,7 +224,7 @@ const AccessCenter = () => {
         throw new Error("This key package is for a different blockchain network");
       }
 
-      keyStoreService.set(documentId, key);
+      keyStoreService.set(documentId, decryptedKey);
       toast.success(`Key imported for Document #${documentId}`);
       await loadData();
     } catch (error: any) {
@@ -270,7 +288,12 @@ const AccessCenter = () => {
         const documentId = Number(envelope.documentId);
         const vaultId = Number(envelope.vaultId);
         const key = (envelope.key || "").trim();
-        if (!documentId || !/^[a-fA-F0-9]{64}$/.test(key)) {
+        if (!documentId || !key) {
+          continue;
+        }
+
+        const isEncrypted = key.includes("ciphertext") && key.includes("ephemPublicKey");
+        if (!isEncrypted && !/^[a-fA-F0-9]{64}$/.test(key)) {
           continue;
         }
 
@@ -319,7 +342,25 @@ const AccessCenter = () => {
           continue;
         }
 
-        keyStoreService.set(documentId, key);
+        let decryptedKey = key;
+        if (isEncrypted) {
+          if (!window.ethereum) {
+            continue;
+          }
+          try {
+            decryptedKey = await window.ethereum.request({
+              method: "eth_decrypt",
+              params: [key, account],
+            });
+            if (!decryptedKey || !/^[a-fA-F0-9]{64}$/.test(decryptedKey)) {
+              continue;
+            }
+          } catch {
+            continue;
+          }
+        }
+
+        keyStoreService.set(documentId, decryptedKey);
         previews.push({
           documentId,
           vaultId,

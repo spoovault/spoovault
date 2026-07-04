@@ -116,6 +116,13 @@ contract SpooVault is ERC721 {
     uint256 private _activeTokenSupply;
     mapping(uint256 => ReleaseCondition) public documentReleaseCondition;
 
+    // ECIES and SSS specific mappings
+    mapping(address => string) public userPublicKeys;
+    // documentId => guardianAddress => encryptedShare
+    mapping(uint256 => mapping(address => string)) public encryptedGuardianShares;
+    // requestId => guardianAddress => encryptedShareForBeneficiary
+    mapping(uint256 => mapping(address => string)) public beneficiaryKeyShares;
+
     // Access versions let us invalidate all prior document grants for a user+vault in O(1).
     mapping(uint256 => mapping(address => uint256)) private _vaultAccessVersion;
     mapping(uint256 => mapping(address => uint256)) private _documentAccessVersion;
@@ -135,6 +142,22 @@ contract SpooVault is ERC721 {
     event ProofOfLifeRecorded(uint256 indexed vaultId, address indexed owner, uint256 timestamp);
     event EmergencyModeUpdated(uint256 indexed vaultId, bool enabled);
     event DocumentReleaseConditionSet(uint256 indexed documentId, ReleaseCondition condition);
+    event PublicKeyRegistered(address indexed user, string publicKey);
+    event GuardianSharesSaved(uint256 indexed documentId);
+    event ShareSubmittedForBeneficiary(uint256 indexed requestId, address indexed guardian, string encryptedShare);
+
+    function registerPublicKey(string calldata publicKey) external {
+        userPublicKeys[msg.sender] = publicKey;
+        emit PublicKeyRegistered(msg.sender, publicKey);
+    }
+
+    function getEncryptedGuardianShare(uint256 documentId, address guardian) external view returns (string memory) {
+        return encryptedGuardianShares[documentId][guardian];
+    }
+
+    function getBeneficiaryKeyShare(uint256 requestId, address guardian) external view returns (string memory) {
+        return beneficiaryKeyShares[requestId][guardian];
+    }
 
     constructor() ERC721("SpooVault Access Token", "SPVT") {}
 
@@ -256,12 +279,16 @@ contract SpooVault is ERC721 {
         string memory ipfsHash,
         AccessLevel requiredAccess
     ) external returns (uint256) {
+        address[] memory emptyGuardians;
+        string[] memory emptyShares;
         return _addDocument(
             vaultId,
             encryptedMetadata,
             ipfsHash,
             requiredAccess,
-            ReleaseCondition.ANYTIME
+            ReleaseCondition.ANYTIME,
+            emptyGuardians,
+            emptyShares
         );
     }
 
@@ -275,12 +302,61 @@ contract SpooVault is ERC721 {
         AccessLevel requiredAccess,
         ReleaseCondition releaseCondition
     ) external returns (uint256) {
+        address[] memory emptyGuardians;
+        string[] memory emptyShares;
         return _addDocument(
             vaultId,
             encryptedMetadata,
             ipfsHash,
             requiredAccess,
-            releaseCondition
+            releaseCondition,
+            emptyGuardians,
+            emptyShares
+        );
+    }
+
+    /**
+     * @dev Add document with ECIES-encrypted guardian shares.
+     */
+    function addDocument(
+        uint256 vaultId,
+        string memory encryptedMetadata,
+        string memory ipfsHash,
+        AccessLevel requiredAccess,
+        address[] calldata guardiansList,
+        string[] calldata shares
+    ) external returns (uint256) {
+        return _addDocument(
+            vaultId,
+            encryptedMetadata,
+            ipfsHash,
+            requiredAccess,
+            ReleaseCondition.ANYTIME,
+            guardiansList,
+            shares
+        );
+    }
+
+    /**
+     * @dev Add document with release condition policy and ECIES-encrypted guardian shares.
+     */
+    function addDocumentWithReleaseCondition(
+        uint256 vaultId,
+        string memory encryptedMetadata,
+        string memory ipfsHash,
+        AccessLevel requiredAccess,
+        ReleaseCondition releaseCondition,
+        address[] calldata guardiansList,
+        string[] calldata shares
+    ) external returns (uint256) {
+        return _addDocument(
+            vaultId,
+            encryptedMetadata,
+            ipfsHash,
+            requiredAccess,
+            releaseCondition,
+            guardiansList,
+            shares
         );
     }
 
@@ -363,7 +439,9 @@ contract SpooVault is ERC721 {
         string memory encryptedMetadata,
         string memory ipfsHash,
         AccessLevel requiredAccess,
-        ReleaseCondition releaseCondition
+        ReleaseCondition releaseCondition,
+        address[] memory guardiansList,
+        string[] memory shares
     ) internal returns (uint256) {
         if (!vaults[vaultId].isActive) revert VaultNotActive();
         if (!isGuardian[vaultId][msg.sender]) revert OnlyGuardian();
@@ -385,8 +463,15 @@ contract SpooVault is ERC721 {
         documentReleaseCondition[documentId] = releaseCondition;
         _grantAccess(0, documentId, msg.sender);
 
+        for (uint256 i = 0; i < guardiansList.length; i++) {
+            encryptedGuardianShares[documentId][guardiansList[i]] = shares[i];
+        }
+
         emit DocumentAdded(documentId, vaultId, ipfsHash);
         emit DocumentReleaseConditionSet(documentId, releaseCondition);
+        if (guardiansList.length > 0) {
+            emit GuardianSharesSaved(documentId);
+        }
         return documentId;
     }
 
@@ -435,6 +520,17 @@ contract SpooVault is ERC721 {
      * @dev Approve an access request (guardian only).
      */
     function approveAccess(uint256 requestId) external {
+        _approveAccess(requestId, "");
+    }
+
+    /**
+     * @dev Approve an access request and submit the decrypted key share for the beneficiary.
+     */
+    function approveAccess(uint256 requestId, string calldata encryptedShareForBeneficiary) external {
+        _approveAccess(requestId, encryptedShareForBeneficiary);
+    }
+
+    function _approveAccess(uint256 requestId, string memory encryptedShareForBeneficiary) internal {
         AccessRequest storage request = accessRequests[requestId];
         if (request.requestId == 0) revert RequestNotExist();
         if (request.status != RequestStatus.PENDING) revert RequestNotPending();
@@ -446,6 +542,11 @@ contract SpooVault is ERC721 {
 
         hasApprovedRequest[requestId][msg.sender] = true;
         request.approvedBy.push(msg.sender);
+
+        if (bytes(encryptedShareForBeneficiary).length > 0) {
+            beneficiaryKeyShares[requestId][msg.sender] = encryptedShareForBeneficiary;
+            emit ShareSubmittedForBeneficiary(requestId, msg.sender, encryptedShareForBeneficiary);
+        }
 
         emit AccessApproved(requestId, msg.sender);
 

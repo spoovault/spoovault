@@ -29,7 +29,7 @@ import BrandLogo from "../components/BrandLogo";
 const AppLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { account, isConnected, disconnect, isFujiNetwork, switchToFuji, provider, signer } = useWeb3();
+  const { account, isConnected, disconnect, isFujiNetwork, switchToFuji, provider, signer, ecosystem, setEcosystem } = useWeb3();
   const [nickname, setNickname] = useState("");
   const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -137,7 +137,17 @@ const AppLayout = () => {
           toast.success("Address copied");
         },
       },
-      ...(isFujiNetwork
+      {
+        key: "ecosystem",
+        label: `Switch to ${ecosystem === "avalanche" ? "Stellar" : "Avalanche"}`,
+        tone: "default",
+        onClick: () => {
+          const next = ecosystem === "avalanche" ? "stellar" : "avalanche";
+          setEcosystem(next);
+          toast.success(`Switched to ${next === "avalanche" ? "Avalanche" : "Stellar"} ecosystem`);
+        },
+      },
+      ...(ecosystem === "stellar" || isFujiNetwork
         ? []
         : [
             {
@@ -154,7 +164,7 @@ const AppLayout = () => {
         onClick: disconnect,
       },
     ],
-    [account, disconnect, isFujiNetwork, navigate, switchToFuji]
+    [account, disconnect, isFujiNetwork, navigate, switchToFuji, ecosystem, setEcosystem]
   );
 
   useEffect(() => {
@@ -184,12 +194,18 @@ const AppLayout = () => {
   useEffect(() => {
     let cancelled = false;
     const loadPendingApprovalCount = async () => {
-      if (!account || !isConnected || !provider || !isFujiNetwork) {
+      if (!account || !isConnected) {
+        setPendingApprovalCount(0);
+        return;
+      }
+      if (ecosystem === "avalanche" && (!provider || !isFujiNetwork)) {
         setPendingApprovalCount(0);
         return;
       }
       try {
-        contractService.initialize(provider, signer ?? undefined);
+        if (ecosystem === "avalanche") {
+          contractService.initialize(provider!, signer ?? undefined);
+        }
         const approvals = await contractService.fetchPendingApprovalsForGuardian(account, 20);
         if (!cancelled) {
           setPendingApprovalCount(approvals.length);
@@ -208,7 +224,7 @@ const AppLayout = () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [account, isConnected, provider, signer, isFujiNetwork, location.pathname]);
+  }, [account, isConnected, provider, signer, isFujiNetwork, ecosystem, location.pathname]);
 
   useEffect(() => {
     const handleOutside = (event: MouseEvent) => {
@@ -351,42 +367,75 @@ const AppLayout = () => {
             </button>
           </div>
 
-          <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-900/65 px-3 py-2.5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  !isConnected
-                    ? "bg-gray-500"
-                    : isFujiNetwork
-                    ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]"
-                    : "bg-yellow-400"
-                }`}
-              />
-              <p
-                className={`text-xs font-medium truncate ${
-                  !isConnected
-                    ? "text-gray-400"
-                    : isFujiNetwork
-                    ? "text-green-300"
-                    : "text-yellow-300"
-                }`}
-              >
-                {!isConnected
-                  ? "Wallet Not Connected"
-                  : isFujiNetwork
-                  ? "Avalanche Fuji Online"
-                  : "Wrong Network"}
-              </p>
-            </div>
-            {isConnected && !isFujiNetwork && (
+          <div className="mt-3 rounded-xl border border-gray-800/80 bg-gray-900/65 px-2 py-2 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-1 bg-black/45 p-1 rounded-xl">
               <button
                 type="button"
-                onClick={switchToFuji}
-                className="text-[11px] font-semibold text-yellow-300 hover:text-yellow-200"
+                onClick={() => setEcosystem("avalanche")}
+                className={`flex-1 py-1.5 text-center text-xs rounded-lg font-semibold transition-all duration-200 ${
+                  ecosystem === "avalanche"
+                    ? "bg-brand-700/80 text-white shadow-md border border-brand-600/30"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
               >
-                Switch
+                Avalanche
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setEcosystem("stellar")}
+                className={`flex-1 py-1.5 text-center text-xs rounded-lg font-semibold transition-all duration-200 ${
+                  ecosystem === "stellar"
+                    ? "bg-purple-800/80 text-white shadow-md border border-purple-600/30"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                Stellar
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between px-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    !isConnected
+                      ? "bg-gray-500"
+                      : ecosystem === "stellar"
+                      ? "bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.6)]"
+                      : isFujiNetwork
+                      ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.6)]"
+                      : "bg-yellow-400"
+                  }`}
+                />
+                <p
+                  className={`text-[11px] font-semibold truncate ${
+                    !isConnected
+                      ? "text-gray-400"
+                      : ecosystem === "stellar"
+                      ? "text-purple-300"
+                      : isFujiNetwork
+                      ? "text-green-300"
+                      : "text-yellow-300"
+                  }`}
+                >
+                  {!isConnected
+                    ? "Wallet Disconnected"
+                    : ecosystem === "stellar"
+                    ? "Stellar Soroban Online"
+                    : isFujiNetwork
+                    ? "Avalanche Fuji Online"
+                    : "Wrong Network"}
+                </p>
+              </div>
+              {isConnected && ecosystem === "avalanche" && !isFujiNetwork && (
+                <button
+                  type="button"
+                  onClick={switchToFuji}
+                  className="text-[10px] font-semibold text-yellow-300 hover:text-yellow-200"
+                >
+                  Switch
+                </button>
+              )}
+            </div>
           </div>
 
           <button
@@ -554,6 +603,10 @@ const AppLayout = () => {
             {!isConnected ? (
               <Tooltip content="Wallet not connected" placement="bottom" delay={120}>
                 <span className="inline-flex w-2.5 h-2.5 rounded-full bg-gray-500 ring-2 ring-gray-500/20" />
+              </Tooltip>
+            ) : ecosystem === "stellar" ? (
+              <Tooltip content="Stellar Soroban" placement="bottom" delay={120}>
+                <span className="inline-flex w-2.5 h-2.5 rounded-full bg-purple-500 ring-2 ring-purple-500/25" />
               </Tooltip>
             ) : isFujiNetwork ? (
               <Tooltip content="Avalanche Fuji" placement="bottom" delay={120}>

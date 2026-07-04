@@ -61,6 +61,8 @@ import { buttonClasses } from "../utils/buttonClasses";
 import { captureError } from "../services/telemetry.service";
 import { keyInboxService } from "../services/keyInbox.service";
 import { keyStoreService } from "../services/keyStore.service";
+import { splitSecret } from "../services/secrets.service";
+import { encryptWithPublicKey } from "../utils/crypto";
 
 type WordArray = { words: number[]; sigBytes: number };
 type ImportedKeyPayload = {
@@ -338,7 +340,7 @@ const Documents = () => {
     onShareModalOpen();
   };
 
-  const downloadBeneficiaryKeyPackage = () => {
+  const downloadBeneficiaryKeyPackage = async () => {
     if (!shareTargetDocId) {
       toast.error("Select a document first");
       return;
@@ -362,42 +364,55 @@ const Documents = () => {
       return;
     }
 
-    const payload = {
-      version: 1,
-      type: "beneficiary_key_package",
-      app: "SpooVault",
-      contract: import.meta.env.VITE_CONTRACT_ADDRESS || "",
-      chainId: Number(import.meta.env.VITE_CHAIN_ID) || 0,
-      vaultId: selectedDoc.vaultId,
-      documentId: shareTargetDocId,
-      beneficiary: recipient.toLowerCase(),
-      issuedBy: account || "",
-      issuedAt: new Date().toISOString(),
-      key,
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `spoovault-doc-${shareTargetDocId}-beneficiary-key.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-
-    if (account) {
-      try {
-        const flagKey = `spoovault-beneficiary-package-exported-${account.toLowerCase()}`;
-        localStorage.setItem(flagKey, "1");
-        window.dispatchEvent(new Event("spoovault-beneficiary-package-exported"));
-      } catch {
-        // ignore localStorage errors
+    try {
+      const beneficiaryPubKey = await contractService.getUserPublicKey(recipient);
+      if (!beneficiaryPubKey) {
+        toast.error("The beneficiary has not registered their encryption public key. Ask them to register it in their Profile page first.");
+        return;
       }
-    }
 
-    toast.success("Beneficiary key package downloaded");
-    resetShareModal();
+      const encryptedKey = encryptWithPublicKey(key, beneficiaryPubKey);
+
+      const payload = {
+        version: 1,
+        type: "beneficiary_key_package",
+        app: "SpooVault",
+        contract: import.meta.env.VITE_CONTRACT_ADDRESS || "",
+        chainId: Number(import.meta.env.VITE_CHAIN_ID) || 0,
+        vaultId: selectedDoc.vaultId,
+        documentId: shareTargetDocId,
+        beneficiary: recipient.toLowerCase(),
+        issuedBy: account || "",
+        issuedAt: new Date().toISOString(),
+        key: encryptedKey,
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `spoovault-doc-${shareTargetDocId}-beneficiary-key.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      if (account) {
+        try {
+          const flagKey = `spoovault-beneficiary-package-exported-${account.toLowerCase()}`;
+          localStorage.setItem(flagKey, "1");
+          window.dispatchEvent(new Event("spoovault-beneficiary-package-exported"));
+        } catch {
+          // ignore localStorage errors
+        }
+      }
+
+      toast.success("Beneficiary key package downloaded");
+      resetShareModal();
+    } catch (error: any) {
+      captureError("documents.downloadKeyPackage", error);
+      toast.error(error.message || "Failed to generate key package");
+    }
   };
 
   const sendBeneficiaryKeyToInbox = async () => {
@@ -435,6 +450,14 @@ const Documents = () => {
 
     setSendingInboxKey(true);
     try {
+      const beneficiaryPubKey = await contractService.getUserPublicKey(recipient);
+      if (!beneficiaryPubKey) {
+        toast.error("The beneficiary has not registered their encryption public key. Ask them to register it in their Profile page first.");
+        return;
+      }
+
+      const encryptedKey = encryptWithPublicKey(key, beneficiaryPubKey);
+
       await keyInboxService.sendKeyEnvelope({
         version: 1,
         type: "beneficiary_key_envelope",
@@ -446,7 +469,7 @@ const Documents = () => {
         beneficiary: recipient.toLowerCase(),
         issuedBy: account.toLowerCase(),
         issuedAt: new Date().toISOString(),
-        key,
+        key: encryptedKey,
       });
 
       try {
@@ -575,7 +598,8 @@ const Documents = () => {
       toast.error("Please select a vault");
       return;
     }
-    if (!uploadableVaults.some((vault) => vault.id === selectedVaultId)) {
+    const vault = uploadableVaults.find((v) => v.id === selectedVaultId);
+    if (!vault) {
       toast.error("You can only upload into vaults where your wallet is an active guardian.");
       return;
     }
@@ -590,6 +614,24 @@ const Documents = () => {
     setUploadAbortController(abortController);
     try {
       setUploadStage("encrypting");
+      
+      // Fetch public keys for all guardians of this vault
+      const missingKeys: string[] = [];
+      const guardianPubKeys: Record<string, string> = {};
+      for (const guardian of vault.guardians) {
+        const pubKey = await contractService.getUserPublicKey(guardian);
+        if (pubKey) {
+          guardianPubKeys[guardian] = pubKey;
+        } else {
+          missingKeys.push(guardian);
+        }
+      }
+
+      if (missingKeys.length > 0) {
+        const short = missingKeys.map(addr => shortenAddress(addr, 4)).join(", ");
+        throw new Error(`Cannot upload. Guardians missing encryption public keys: ${short}. They must register their keys in their Profile page first.`);
+      }
+
       const key = generateEncryptionKey();
       const metadata = {
         name: selectedFile.name,
@@ -599,6 +641,20 @@ const Documents = () => {
       };
       const encryptedMetadata = encryptData(JSON.stringify(metadata), key);
       const encryptedFile = await encryptFile(selectedFile, key);
+      
+      // Split symmetric key using Shamir's Secret Sharing (SSS)
+      const keyShares = splitSecret(key, vault.guardians.length, vault.approvalThreshold);
+      
+      // Encrypt each share for each guardian using their public key
+      const encryptedShares: string[] = [];
+      for (let i = 0; i < vault.guardians.length; i++) {
+        const guardian = vault.guardians[i];
+        const pubKey = guardianPubKeys[guardian];
+        const share = keyShares[i];
+        const encrypted = encryptWithPublicKey(share, pubKey);
+        encryptedShares.push(encrypted);
+      }
+
       setUploadStage("uploading_ipfs");
       const ipfsResult = await uploadToIPFS(
         encryptedFile,
@@ -612,7 +668,9 @@ const Documents = () => {
         encryptedMetadata,
         ipfsResult.hash,
         accessLevel,
-        releaseCondition
+        releaseCondition,
+        vault.guardians,
+        encryptedShares
       );
       setUploadStage("confirming_tx");
 
