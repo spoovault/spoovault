@@ -1,54 +1,9 @@
-# Developer Notes - Part 10
+# Vault Access & Multi-Sig Approval Workflows
 
-This document tracks progress, updates, and code reviews.
-* Update 3 - Signed off on 2025-07-15T04:37:21.899Z
-* Update 9 - Signed off on 2025-07-17T07:09:36.862Z
-* Update 40 - Signed off on 2025-07-27T16:06:25.031Z
-* Update 53 - Signed off on 2025-07-31T19:07:52.401Z
-* Update 93 - Signed off on 2025-08-14T06:33:55.086Z
-* Update 112 - Signed off on 2025-08-21T01:44:06.168Z
-* Update 155 - Signed off on 2025-09-05T18:15:25.764Z
-* Update 179 - Signed off on 2025-09-13T16:05:50.208Z
-* Update 207 - Signed off on 2025-09-23T14:02:52.209Z
-* Update 218 - Signed off on 2025-09-27T00:11:14.249Z
-* Update 239 - Signed off on 2025-10-04T07:57:47.423Z
-* Update 246 - Signed off on 2025-10-07T00:42:09.960Z
-* Update 247 - Signed off on 2025-10-07T07:58:40.315Z
-* Update 252 - Signed off on 2025-10-08T19:37:11.651Z
-* Update 277 - Signed off on 2025-10-17T17:09:53.150Z
-* Update 288 - Signed off on 2025-10-21T19:17:37.045Z
-* Update 293 - Signed off on 2025-10-23T05:23:08.628Z
-* Update 333 - Signed off on 2025-11-06T04:19:31.046Z
-* Update 378 - Signed off on 2025-11-21T15:16:26.981Z
-* Update 387 - Signed off on 2025-11-24T03:31:13.289Z
-* Update 427 - Signed off on 2025-12-08T07:44:30.342Z
-* Update 449 - Signed off on 2025-12-15T23:15:49.337Z
-* Update 452 - Signed off on 2025-12-17T00:30:28.966Z
-* Update 468 - Signed off on 2025-12-22T00:14:15.723Z
-* Update 471 - Signed off on 2025-12-23T00:10:12.071Z
-* Update 492 - Signed off on 2025-12-29T12:11:50.972Z
-* Update 501 - Signed off on 2026-01-01T18:20:37.384Z
-* Update 509 - Signed off on 2026-01-04T14:08:57.559Z
-* Update 532 - Signed off on 2026-01-12T08:14:42.440Z
-* Update 552 - Signed off on 2026-01-19T16:06:44.331Z
-* Update 554 - Signed off on 2026-01-20T08:40:33.843Z
-* Update 582 - Signed off on 2026-01-29T13:52:42.610Z
-* Update 630 - Signed off on 2026-02-15T06:34:24.933Z
-* Update 633 - Signed off on 2026-02-16T05:47:25.176Z
-* Update 662 - Signed off on 2026-02-26T07:56:08.143Z
-* Update 683 - Signed off on 2026-03-06T02:15:52.169Z
-* Update 697 - Signed off on 2026-03-11T00:25:10.483Z
-* Update 699 - Signed off on 2026-03-11T15:45:08.035Z
-* Update 700 - Signed off on 2026-03-11T20:43:37.600Z
-* Update 714 - Signed off on 2026-03-16T10:09:58.860Z
-* Update 793 - Signed off on 2026-04-13T15:26:51.876Z
-* Update 799 - Signed off on 2026-04-15T09:24:44.697Z
-* Update 809 - Signed off on 2026-04-19T09:58:55.970Z
-* Update 831 - Signed off on 2026-04-27T01:55:46.244Z
-* Update 833 - Signed off on 2026-04-27T21:08:03.680Z
-* Update 849 - Signed off on 2026-05-03T11:06:47.461Z
-* Update 883 - Signed off on 2026-05-15T05:58:20.802Z
-* Update 909 - Signed off on 2026-05-23T17:43:43.804Z
-* Update 938 - Signed off on 2026-06-03T07:42:48.263Z
-* Update 996 - Signed off on 2026-06-24T10:49:43.964Z
-* Update 1000 - Signed off on 2026-06-26T02:51:17.900Z
+The vault access workflow ensures that documents can only be unlocked through consensus.
+
+## Workflow Phases
+1. **Access Request**: The beneficiary navigates to "My Access" and triggers a request for a document.
+2. **Guardian Notification**: Guardians log in and see pending requests for vaults they guard.
+3. **Guardian Approval**: The guardian retrieves their encrypted SSS share from the key inbox, decrypts it locally using their private key, re-encrypts it with the beneficiary's public key, and registers it on-chain via the `approveAccess` contract call.
+4. **Key Assembly**: Once the threshold is met, the beneficiary downloads the encrypted shares, decrypts them, reconstructs the key, and unlocks the file.

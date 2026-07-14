@@ -1,53 +1,13 @@
-# Developer Notes - Part 7
+# Freighter Wallet Integration Guide for Stellar
 
-This document tracks progress, updates, and code reviews.
-* Update 5 - Signed off on 2025-07-15T22:51:56.532Z
-* Update 20 - Signed off on 2025-07-20T22:23:04.511Z
-* Update 39 - Signed off on 2025-07-27T10:12:15.958Z
-* Update 65 - Signed off on 2025-08-05T01:29:05.317Z
-* Update 71 - Signed off on 2025-08-07T01:05:59.918Z
-* Update 76 - Signed off on 2025-08-08T16:03:22.373Z
-* Update 77 - Signed off on 2025-08-08T23:33:48.052Z
-* Update 134 - Signed off on 2025-08-28T22:13:02.156Z
-* Update 152 - Signed off on 2025-09-04T08:39:17.161Z
-* Update 158 - Signed off on 2025-09-06T17:55:38.739Z
-* Update 173 - Signed off on 2025-09-11T16:26:15.556Z
-* Update 185 - Signed off on 2025-09-16T02:27:44.757Z
-* Update 205 - Signed off on 2025-09-22T18:00:58.300Z
-* Update 231 - Signed off on 2025-10-01T07:58:06.505Z
-* Update 291 - Signed off on 2025-10-22T15:02:47.447Z
-* Update 326 - Signed off on 2025-11-03T20:55:55.813Z
-* Update 332 - Signed off on 2025-11-05T21:53:46.990Z
-* Update 404 - Signed off on 2025-11-29T15:57:50.343Z
-* Update 426 - Signed off on 2025-12-07T20:14:28.925Z
-* Update 429 - Signed off on 2025-12-08T23:02:37.144Z
-* Update 446 - Signed off on 2025-12-14T15:30:06.638Z
-* Update 461 - Signed off on 2025-12-19T14:31:37.290Z
-* Update 474 - Signed off on 2025-12-23T19:28:44.800Z
-* Update 486 - Signed off on 2025-12-27T09:04:55.009Z
-* Update 523 - Signed off on 2026-01-09T03:10:03.126Z
-* Update 533 - Signed off on 2026-01-12T14:12:52.071Z
-* Update 536 - Signed off on 2026-01-13T18:20:36.433Z
-* Update 575 - Signed off on 2026-01-27T01:29:31.177Z
-* Update 579 - Signed off on 2026-01-28T10:56:09.001Z
-* Update 591 - Signed off on 2026-02-01T22:00:20.077Z
-* Update 595 - Signed off on 2026-02-03T05:20:25.215Z
-* Update 603 - Signed off on 2026-02-06T01:26:47.368Z
-* Update 609 - Signed off on 2026-02-08T10:27:47.086Z
-* Update 617 - Signed off on 2026-02-11T03:47:19.214Z
-* Update 637 - Signed off on 2026-02-17T16:45:06.185Z
-* Update 651 - Signed off on 2026-02-22T06:06:30.643Z
-* Update 665 - Signed off on 2026-02-27T11:38:59.576Z
-* Update 670 - Signed off on 2026-03-01T00:11:06.737Z
-* Update 684 - Signed off on 2026-03-06T14:40:34.204Z
-* Update 689 - Signed off on 2026-03-08T12:03:44.760Z
-* Update 695 - Signed off on 2026-03-10T10:07:49.071Z
-* Update 729 - Signed off on 2026-03-22T05:01:52.935Z
-* Update 749 - Signed off on 2026-03-28T18:53:31.970Z
-* Update 754 - Signed off on 2026-03-30T22:45:44.446Z
-* Update 781 - Signed off on 2026-04-09T14:11:05.519Z
-* Update 787 - Signed off on 2026-04-11T14:21:47.603Z
-* Update 852 - Signed off on 2026-05-04T18:35:00.365Z
-* Update 869 - Signed off on 2026-05-10T09:30:49.829Z
-* Update 912 - Signed off on 2026-05-25T04:39:21.048Z
-* Update 922 - Signed off on 2026-05-28T17:31:56.320Z
+Freighter is the native browser extension wallet for Stellar. It allows signing Soroban transactions safely.
+
+## Client Integration Steps
+1. **Installation**: Check for Freighter extension availability.
+2. **Initialization**: Initialize Freighter API and get active account address.
+3. **Lazy SDK Loading**: Import `@stellar/freighter-api` dynamically to minimize bundle footprint:
+   ```typescript
+   const freighter = await import("@stellar/freighter-api");
+   const address = await freighter.getAddress();
+   ```
+4. **Transaction Signing**: Submit transaction envelopes (XDR) to Freighter for client signature.

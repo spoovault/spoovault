@@ -1,58 +1,11 @@
-# Developer Notes - Part 19
+# Repository Onboarding & Contribution Standards
 
-This document tracks progress, updates, and code reviews.
-* Update 7 - Signed off on 2025-07-16T14:17:23.477Z
-* Update 11 - Signed off on 2025-07-18T01:56:31.210Z
-* Update 36 - Signed off on 2025-07-26T13:46:39.838Z
-* Update 75 - Signed off on 2025-08-08T09:17:27.471Z
-* Update 86 - Signed off on 2025-08-11T20:57:43.402Z
-* Update 125 - Signed off on 2025-08-26T04:13:18.709Z
-* Update 137 - Signed off on 2025-08-29T20:45:47.049Z
-* Update 206 - Signed off on 2025-09-23T06:18:33.778Z
-* Update 215 - Signed off on 2025-09-26T05:23:26.754Z
-* Update 233 - Signed off on 2025-10-02T00:33:38.174Z
-* Update 234 - Signed off on 2025-10-02T12:06:25.398Z
-* Update 265 - Signed off on 2025-10-13T08:05:53.262Z
-* Update 285 - Signed off on 2025-10-20T18:15:02.743Z
-* Update 304 - Signed off on 2025-10-26T17:23:52.800Z
-* Update 342 - Signed off on 2025-11-09T01:06:30.577Z
-* Update 396 - Signed off on 2025-11-26T22:30:06.828Z
-* Update 414 - Signed off on 2025-12-03T18:32:50.533Z
-* Update 417 - Signed off on 2025-12-04T18:00:22.180Z
-* Update 438 - Signed off on 2025-12-11T20:13:39.152Z
-* Update 469 - Signed off on 2025-12-22T12:03:54.102Z
-* Update 500 - Signed off on 2026-01-01T12:45:49.439Z
-* Update 513 - Signed off on 2026-01-05T20:36:50.286Z
-* Update 517 - Signed off on 2026-01-06T20:23:17.608Z
-* Update 573 - Signed off on 2026-01-26T15:25:47.021Z
-* Update 585 - Signed off on 2026-01-30T15:50:55.519Z
-* Update 600 - Signed off on 2026-02-05T00:00:41.813Z
-* Update 601 - Signed off on 2026-02-05T06:47:38.352Z
-* Update 636 - Signed off on 2026-02-17T05:50:03.345Z
-* Update 652 - Signed off on 2026-02-22T16:57:35.346Z
-* Update 666 - Signed off on 2026-02-27T18:22:38.005Z
-* Update 667 - Signed off on 2026-02-28T01:17:34.206Z
-* Update 674 - Signed off on 2026-03-02T12:54:09.743Z
-* Update 675 - Signed off on 2026-03-02T20:40:52.227Z
-* Update 719 - Signed off on 2026-03-18T02:15:55.764Z
-* Update 724 - Signed off on 2026-03-20T06:13:29.682Z
-* Update 732 - Signed off on 2026-03-23T06:04:52.683Z
-* Update 752 - Signed off on 2026-03-30T01:07:52.935Z
-* Update 785 - Signed off on 2026-04-10T23:47:06.183Z
-* Update 791 - Signed off on 2026-04-13T00:42:58.140Z
-* Update 792 - Signed off on 2026-04-13T06:13:44.788Z
-* Update 797 - Signed off on 2026-04-14T19:22:49.477Z
-* Update 818 - Signed off on 2026-04-22T18:22:15.021Z
-* Update 819 - Signed off on 2026-04-23T00:01:42.879Z
-* Update 850 - Signed off on 2026-05-03T20:05:05.647Z
-* Update 866 - Signed off on 2026-05-09T05:38:11.084Z
-* Update 887 - Signed off on 2026-05-16T09:00:02.765Z
-* Update 888 - Signed off on 2026-05-16T15:39:27.019Z
-* Update 892 - Signed off on 2026-05-17T17:40:47.013Z
-* Update 893 - Signed off on 2026-05-18T03:03:42.906Z
-* Update 905 - Signed off on 2026-05-22T04:06:17.369Z
-* Update 907 - Signed off on 2026-05-23T03:22:26.789Z
-* Update 948 - Signed off on 2026-06-06T20:15:27.166Z
-* Update 949 - Signed off on 2026-06-07T05:04:03.254Z
-* Update 989 - Signed off on 2026-06-22T01:38:55.183Z
-* Update 995 - Signed off on 2026-06-24T03:39:39.953Z
+Welcome to the SpooVault codebase!
+
+## Onboarding Checklist
+1. Fork the repository and create your feature branch: `feature/issue-<num>-description`.
+2. Configure local environment variables in `.env`.
+3. Set up hardhat or rust targets.
+4. Add unit tests for any new contract functionalities.
+5. Create a pull request outlining details and screenshot proofs.
+6. A review from core maintainers is required before merging to main.

@@ -1,51 +1,13 @@
-# Developer Notes - Part 8
+# MetaMask Integration & EVM Provider Configuration
 
-This document tracks progress, updates, and code reviews.
-* Update 37 - Signed off on 2025-07-26T20:27:15.498Z
-* Update 78 - Signed off on 2025-08-09T04:09:26.283Z
-* Update 99 - Signed off on 2025-08-16T05:10:10.883Z
-* Update 100 - Signed off on 2025-08-16T15:11:49.352Z
-* Update 164 - Signed off on 2025-09-08T13:32:10.998Z
-* Update 190 - Signed off on 2025-09-17T12:50:27.412Z
-* Update 208 - Signed off on 2025-09-23T22:42:32.623Z
-* Update 251 - Signed off on 2025-10-08T11:52:26.750Z
-* Update 275 - Signed off on 2025-10-16T21:19:26.124Z
-* Update 298 - Signed off on 2025-10-24T16:40:54.028Z
-* Update 299 - Signed off on 2025-10-25T01:36:27.691Z
-* Update 305 - Signed off on 2025-10-26T23:25:39.758Z
-* Update 316 - Signed off on 2025-10-30T20:50:37.857Z
-* Update 425 - Signed off on 2025-12-07T11:41:41.955Z
-* Update 430 - Signed off on 2025-12-09T04:53:44.268Z
-* Update 460 - Signed off on 2025-12-19T07:17:58.158Z
-* Update 493 - Signed off on 2025-12-29T18:53:13.935Z
-* Update 507 - Signed off on 2026-01-03T22:03:01.302Z
-* Update 514 - Signed off on 2026-01-06T01:42:23.182Z
-* Update 516 - Signed off on 2026-01-06T14:20:15.004Z
-* Update 520 - Signed off on 2026-01-07T22:37:07.737Z
-* Update 524 - Signed off on 2026-01-09T14:49:47.012Z
-* Update 525 - Signed off on 2026-01-09T23:12:48.967Z
-* Update 543 - Signed off on 2026-01-16T11:38:44.213Z
-* Update 577 - Signed off on 2026-01-27T20:36:29.777Z
-* Update 594 - Signed off on 2026-02-02T21:49:18.029Z
-* Update 618 - Signed off on 2026-02-11T09:48:51.737Z
-* Update 623 - Signed off on 2026-02-12T21:43:30.499Z
-* Update 659 - Signed off on 2026-02-25T09:17:41.208Z
-* Update 709 - Signed off on 2026-03-14T22:11:38.839Z
-* Update 711 - Signed off on 2026-03-15T15:11:03.582Z
-* Update 794 - Signed off on 2026-04-13T21:33:06.984Z
-* Update 814 - Signed off on 2026-04-21T03:40:44.950Z
-* Update 830 - Signed off on 2026-04-26T17:16:55.407Z
-* Update 848 - Signed off on 2026-05-03T01:24:12.416Z
-* Update 858 - Signed off on 2026-05-06T18:37:31.757Z
-* Update 859 - Signed off on 2026-05-06T23:16:15.875Z
-* Update 872 - Signed off on 2026-05-11T09:07:47.491Z
-* Update 879 - Signed off on 2026-05-13T14:22:47.232Z
-* Update 891 - Signed off on 2026-05-17T12:15:58.936Z
-* Update 902 - Signed off on 2026-05-21T06:13:28.589Z
-* Update 918 - Signed off on 2026-05-27T08:12:02.179Z
-* Update 936 - Signed off on 2026-06-02T09:29:02.218Z
-* Update 942 - Signed off on 2026-06-04T14:28:22.575Z
-* Update 973 - Signed off on 2026-06-16T10:56:30.314Z
-* Update 977 - Signed off on 2026-06-17T18:06:32.222Z
-* Update 987 - Signed off on 2026-06-21T04:16:23.391Z
-* Update 990 - Signed off on 2026-06-22T12:37:24.587Z
+MetaMask is used as the primary provider for EVM networks, configured to connect to the Avalanche Fuji Testnet.
+
+## Web3 Context Setup
+- Checks for `window.ethereum` provider.
+- Configures default RPC (`VITE_AVALANCHE_RPC`).
+- Listens to account and chain change events:
+  ```javascript
+  window.ethereum.on('accountsChanged', (accounts) => handleAccountChange(accounts));
+  window.ethereum.on('chainChanged', (chainId) => handleChainChange(chainId));
+  ```
+- Validates the network chain ID matches target configuration to avoid cross-network execution errors.

@@ -1,53 +1,17 @@
-# Developer Notes - Part 6
+# Soroban Smart Contract Architecture (Rust + Cargo)
 
-This document tracks progress, updates, and code reviews.
-* Update 10 - Signed off on 2025-07-17T18:22:01.349Z
-* Update 67 - Signed off on 2025-08-05T19:30:24.666Z
-* Update 73 - Signed off on 2025-08-07T13:10:06.201Z
-* Update 85 - Signed off on 2025-08-11T14:36:07.255Z
-* Update 108 - Signed off on 2025-08-19T17:36:19.490Z
-* Update 123 - Signed off on 2025-08-25T05:33:53.728Z
-* Update 150 - Signed off on 2025-09-03T16:14:21.099Z
-* Update 162 - Signed off on 2025-09-07T22:36:09.985Z
-* Update 175 - Signed off on 2025-09-12T08:52:45.427Z
-* Update 180 - Signed off on 2025-09-14T02:04:32.902Z
-* Update 216 - Signed off on 2025-09-26T09:49:19.229Z
-* Update 226 - Signed off on 2025-09-29T16:37:31.467Z
-* Update 254 - Signed off on 2025-10-09T12:58:14.720Z
-* Update 264 - Signed off on 2025-10-13T02:50:14.306Z
-* Update 314 - Signed off on 2025-10-30T05:29:51.072Z
-* Update 318 - Signed off on 2025-10-31T15:21:11.217Z
-* Update 323 - Signed off on 2025-11-02T15:56:58.200Z
-* Update 330 - Signed off on 2025-11-05T06:55:06.050Z
-* Update 353 - Signed off on 2025-11-12T18:18:16.268Z
-* Update 386 - Signed off on 2025-11-23T16:43:03.790Z
-* Update 391 - Signed off on 2025-11-25T04:42:53.433Z
-* Update 413 - Signed off on 2025-12-03T07:56:37.590Z
-* Update 434 - Signed off on 2025-12-10T12:17:36.446Z
-* Update 454 - Signed off on 2025-12-17T14:57:37.851Z
-* Update 466 - Signed off on 2025-12-21T09:47:35.841Z
-* Update 480 - Signed off on 2025-12-25T09:52:12.203Z
-* Update 483 - Signed off on 2025-12-26T08:16:40.074Z
-* Update 487 - Signed off on 2025-12-27T13:47:12.500Z
-* Update 503 - Signed off on 2026-01-02T07:01:27.624Z
-* Update 522 - Signed off on 2026-01-08T15:22:21.797Z
-* Update 528 - Signed off on 2026-01-10T21:11:26.477Z
-* Update 541 - Signed off on 2026-01-15T11:57:56.861Z
-* Update 574 - Signed off on 2026-01-26T19:42:04.456Z
-* Update 676 - Signed off on 2026-03-03T05:47:26.324Z
-* Update 682 - Signed off on 2026-03-05T19:51:40.142Z
-* Update 706 - Signed off on 2026-03-14T02:58:55.840Z
-* Update 712 - Signed off on 2026-03-15T21:33:21.897Z
-* Update 734 - Signed off on 2026-03-23T17:19:22.137Z
-* Update 764 - Signed off on 2026-04-03T11:29:37.610Z
-* Update 766 - Signed off on 2026-04-04T01:55:38.733Z
-* Update 810 - Signed off on 2026-04-19T20:48:08.034Z
-* Update 825 - Signed off on 2026-04-25T00:36:20.183Z
-* Update 832 - Signed off on 2026-04-27T11:38:59.189Z
-* Update 867 - Signed off on 2026-05-09T11:46:09.573Z
-* Update 878 - Signed off on 2026-05-13T04:19:06.025Z
-* Update 885 - Signed off on 2026-05-15T23:28:58.706Z
-* Update 924 - Signed off on 2026-05-29T07:54:02.454Z
-* Update 927 - Signed off on 2026-05-30T14:05:06.183Z
-* Update 928 - Signed off on 2026-05-31T00:47:07.733Z
-* Update 957 - Signed off on 2026-06-10T01:15:47.543Z
+The Stellar integration is built using Soroban smart contracts written in Rust (`contracts-stellar/src/lib.rs`).
+
+## Rust Module Layout
+- **AccessLevel & RequestStatus Enums**: Strong typed access rules.
+- **Vault, Document, and AccessRequest Structs**: Standardized state layouts stored in persistent instance storage.
+- **SpooVaultStellar Contract**: Core entry points matching EVM functionality.
+
+## Soroban Storage Pattern
+We utilize persistent storage key mapping for:
+- `DataKey::Vault(id)`
+- `DataKey::Doc(id)`
+- `DataKey::Request(id)`
+- `DataKey::PubKey(address)`
+
+This ensures isolated, verifiable state transitions under Freighter authorization constraints.

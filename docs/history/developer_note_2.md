@@ -1,57 +1,12 @@
-# Developer Notes - Part 2
+# Client-Side Encryption & Security Standards (AES-256)
 
-This document tracks progress, updates, and code reviews.
-* Update 13 - Signed off on 2025-07-18T16:03:15.343Z
-* Update 16 - Signed off on 2025-07-19T14:23:04.899Z
-* Update 31 - Signed off on 2025-07-25T00:43:19.246Z
-* Update 35 - Signed off on 2025-07-26T07:05:02.968Z
-* Update 45 - Signed off on 2025-07-29T05:27:28.971Z
-* Update 54 - Signed off on 2025-08-01T03:08:56.273Z
-* Update 72 - Signed off on 2025-08-07T08:19:32.579Z
-* Update 107 - Signed off on 2025-08-19T05:08:58.265Z
-* Update 136 - Signed off on 2025-08-29T15:20:10.866Z
-* Update 142 - Signed off on 2025-08-31T20:20:50.000Z
-* Update 174 - Signed off on 2025-09-12T02:58:06.147Z
-* Update 188 - Signed off on 2025-09-16T20:40:20.007Z
-* Update 197 - Signed off on 2025-09-20T00:19:24.453Z
-* Update 212 - Signed off on 2025-09-25T00:01:54.906Z
-* Update 219 - Signed off on 2025-09-27T07:07:37.690Z
-* Update 232 - Signed off on 2025-10-01T17:36:02.399Z
-* Update 242 - Signed off on 2025-10-05T12:30:31.078Z
-* Update 266 - Signed off on 2025-10-13T14:44:30.136Z
-* Update 276 - Signed off on 2025-10-17T09:28:12.882Z
-* Update 281 - Signed off on 2025-10-19T08:14:30.248Z
-* Update 286 - Signed off on 2025-10-21T00:17:03.332Z
-* Update 319 - Signed off on 2025-10-31T19:50:13.342Z
-* Update 322 - Signed off on 2025-11-02T04:52:22.133Z
-* Update 345 - Signed off on 2025-11-10T02:36:13.881Z
-* Update 373 - Signed off on 2025-11-19T19:49:59.666Z
-* Update 392 - Signed off on 2025-11-25T15:42:32.780Z
-* Update 473 - Signed off on 2025-12-23T15:03:41.177Z
-* Update 498 - Signed off on 2025-12-31T19:08:49.916Z
-* Update 512 - Signed off on 2026-01-05T10:52:28.459Z
-* Update 534 - Signed off on 2026-01-12T21:09:57.605Z
-* Update 544 - Signed off on 2026-01-16T23:16:11.510Z
-* Update 556 - Signed off on 2026-01-20T18:34:36.877Z
-* Update 565 - Signed off on 2026-01-23T21:17:55.874Z
-* Update 576 - Signed off on 2026-01-27T08:19:35.744Z
-* Update 593 - Signed off on 2026-02-02T16:47:29.821Z
-* Update 672 - Signed off on 2026-03-01T23:28:10.907Z
-* Update 692 - Signed off on 2026-03-09T10:08:17.602Z
-* Update 704 - Signed off on 2026-03-13T14:25:34.916Z
-* Update 707 - Signed off on 2026-03-14T09:36:37.209Z
-* Update 742 - Signed off on 2026-03-26T05:27:35.982Z
-* Update 759 - Signed off on 2026-04-01T18:23:48.896Z
-* Update 802 - Signed off on 2026-04-16T19:03:32.162Z
-* Update 822 - Signed off on 2026-04-24T02:27:30.167Z
-* Update 838 - Signed off on 2026-04-29T18:26:29.543Z
-* Update 840 - Signed off on 2026-04-30T11:36:53.177Z
-* Update 853 - Signed off on 2026-05-05T05:29:03.076Z
-* Update 930 - Signed off on 2026-05-31T16:30:17.847Z
-* Update 934 - Signed off on 2026-06-01T22:44:30.312Z
-* Update 946 - Signed off on 2026-06-05T22:35:05.776Z
-* Update 950 - Signed off on 2026-06-07T11:58:42.306Z
-* Update 956 - Signed off on 2026-06-09T17:56:45.830Z
-* Update 959 - Signed off on 2026-06-10T13:40:15.462Z
-* Update 976 - Signed off on 2026-06-17T07:56:01.710Z
-* Update 998 - Signed off on 2026-06-25T10:16:49.974Z
+Security in SpooVault is strictly zero-knowledge. Documents are encrypted directly in the client's browser before transit.
+
+## Encryption Flow
+1. **Key Generation**: A random 256-bit symmetric key is generated locally using secure random values.
+2. **AES-256 Encryption**: The document's binary data is encrypted with the generated key using the AES-GCM or AES-CBC algorithm (provided by `crypto-js`).
+3. **Metadata Encryption**: Filename, MIME type, and size are also encrypted to prevent leakage of metadata.
+4. **Key Splitting**: The symmetric key is split into $N$ parts using Shamir's Secret Sharing.
+5. **Upload**: The encrypted payload is sent to IPFS, and the on-chain registry receives the IPFS hash along with public key records.
+
+No unencrypted files or keys are ever transmitted to external servers.

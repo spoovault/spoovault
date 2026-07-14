@@ -1,48 +1,9 @@
-# Developer Notes - Part 17
+# Troubleshooting Common Integration Issues
 
-This document tracks progress, updates, and code reviews.
-* Update 1 - Signed off on 2025-07-14T18:39:35.121Z
-* Update 12 - Signed off on 2025-07-18T09:19:36.298Z
-* Update 19 - Signed off on 2025-07-20T10:42:32.740Z
-* Update 24 - Signed off on 2025-07-22T08:21:58.202Z
-* Update 33 - Signed off on 2025-07-25T10:52:28.137Z
-* Update 38 - Signed off on 2025-07-27T04:53:47.442Z
-* Update 48 - Signed off on 2025-07-30T01:48:39.050Z
-* Update 50 - Signed off on 2025-07-30T20:57:47.355Z
-* Update 56 - Signed off on 2025-08-01T12:27:52.841Z
-* Update 58 - Signed off on 2025-08-02T04:27:06.276Z
-* Update 59 - Signed off on 2025-08-02T16:48:26.410Z
-* Update 62 - Signed off on 2025-08-03T20:39:46.216Z
-* Update 64 - Signed off on 2025-08-04T19:58:26.397Z
-* Update 69 - Signed off on 2025-08-06T06:39:06.344Z
-* Update 114 - Signed off on 2025-08-21T22:07:38.117Z
-* Update 121 - Signed off on 2025-08-24T13:22:28.412Z
-* Update 169 - Signed off on 2025-09-10T07:02:01.137Z
-* Update 181 - Signed off on 2025-09-14T14:04:45.485Z
-* Update 196 - Signed off on 2025-09-19T15:08:35.982Z
-* Update 198 - Signed off on 2025-09-20T09:08:08.184Z
-* Update 201 - Signed off on 2025-09-21T08:02:40.977Z
-* Update 209 - Signed off on 2025-09-24T05:08:05.944Z
-* Update 217 - Signed off on 2025-09-26T19:36:15.966Z
-* Update 240 - Signed off on 2025-10-04T14:22:47.275Z
-* Update 273 - Signed off on 2025-10-15T22:52:50.819Z
-* Update 274 - Signed off on 2025-10-16T10:46:15.342Z
-* Update 303 - Signed off on 2025-10-26T09:48:27.415Z
-* Update 340 - Signed off on 2025-11-08T05:30:45.549Z
-* Update 366 - Signed off on 2025-11-17T06:18:30.794Z
-* Update 372 - Signed off on 2025-11-19T13:07:37.995Z
-* Update 400 - Signed off on 2025-11-28T08:34:06.474Z
-* Update 540 - Signed off on 2026-01-15T01:22:10.618Z
-* Update 597 - Signed off on 2026-02-03T19:30:19.806Z
-* Update 638 - Signed off on 2026-02-18T01:32:43.074Z
-* Update 646 - Signed off on 2026-02-20T19:07:37.808Z
-* Update 681 - Signed off on 2026-03-05T07:54:47.133Z
-* Update 696 - Signed off on 2026-03-10T16:21:57.111Z
-* Update 741 - Signed off on 2026-03-25T17:35:30.776Z
-* Update 750 - Signed off on 2026-03-29T04:42:22.219Z
-* Update 760 - Signed off on 2026-04-02T05:22:26.765Z
-* Update 816 - Signed off on 2026-04-21T21:50:53.564Z
-* Update 873 - Signed off on 2026-05-11T18:58:43.035Z
-* Update 901 - Signed off on 2026-05-20T17:59:53.062Z
-* Update 925 - Signed off on 2026-05-29T19:27:36.320Z
-* Update 983 - Signed off on 2026-06-19T11:23:45.600Z
+Answers to typical development issues when running SpooVault.
+
+## Common Failures
+1. **Freighter connection fails**: Verify Freighter has "Testnet" selected in its settings.
+2. **Hardhat RPC timeout**: If Avalanche Fuji RPC times out, replace the endpoint URL in your `.env` file with an alternate public node.
+3. **IPFS Upload fails**: Ensure the Pinata local proxy is running (`npm run proxy:pinata`) and the port matches your env config.
+4. **MetaMask Transaction Rejected**: Verify Fuji Testnet token balance. Get free Fuji tokens from the official faucet.

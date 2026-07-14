@@ -1,48 +1,9 @@
-# Developer Notes - Part 9
+# IPFS Storage & Serverless Pinata Proxy Setup
 
-This document tracks progress, updates, and code reviews.
-* Update 4 - Signed off on 2025-07-15T14:20:01.467Z
-* Update 41 - Signed off on 2025-07-27T21:06:39.327Z
-* Update 52 - Signed off on 2025-07-31T10:41:12.509Z
-* Update 117 - Signed off on 2025-08-22T21:34:41.183Z
-* Update 163 - Signed off on 2025-09-08T08:43:40.792Z
-* Update 178 - Signed off on 2025-09-13T08:11:46.522Z
-* Update 221 - Signed off on 2025-09-27T22:08:03.770Z
-* Update 244 - Signed off on 2025-10-06T07:56:46.308Z
-* Update 248 - Signed off on 2025-10-07T12:19:31.903Z
-* Update 267 - Signed off on 2025-10-13T21:07:41.861Z
-* Update 279 - Signed off on 2025-10-18T09:16:58.631Z
-* Update 325 - Signed off on 2025-11-03T11:04:39.652Z
-* Update 329 - Signed off on 2025-11-04T23:26:52.693Z
-* Update 365 - Signed off on 2025-11-17T00:59:02.814Z
-* Update 371 - Signed off on 2025-11-19T01:43:00.100Z
-* Update 389 - Signed off on 2025-11-24T17:07:02.342Z
-* Update 406 - Signed off on 2025-11-30T07:00:37.736Z
-* Update 407 - Signed off on 2025-11-30T18:23:59.875Z
-* Update 422 - Signed off on 2025-12-06T09:44:05.011Z
-* Update 463 - Signed off on 2025-12-20T04:22:18.845Z
-* Update 502 - Signed off on 2026-01-02T01:01:45.752Z
-* Update 521 - Signed off on 2026-01-08T07:51:34.097Z
-* Update 537 - Signed off on 2026-01-14T00:33:45.153Z
-* Update 560 - Signed off on 2026-01-22T00:22:43.476Z
-* Update 588 - Signed off on 2026-01-31T21:14:56.055Z
-* Update 642 - Signed off on 2026-02-19T17:01:11.039Z
-* Update 649 - Signed off on 2026-02-21T17:28:25.171Z
-* Update 656 - Signed off on 2026-02-24T08:02:57.903Z
-* Update 673 - Signed off on 2026-03-02T05:59:36.562Z
-* Update 678 - Signed off on 2026-03-04T01:08:41.826Z
-* Update 679 - Signed off on 2026-03-04T12:35:54.700Z
-* Update 721 - Signed off on 2026-03-19T01:57:44.125Z
-* Update 758 - Signed off on 2026-04-01T07:27:11.216Z
-* Update 778 - Signed off on 2026-04-08T15:33:19.916Z
-* Update 780 - Signed off on 2026-04-09T06:40:49.293Z
-* Update 782 - Signed off on 2026-04-10T00:16:31.099Z
-* Update 824 - Signed off on 2026-04-24T16:29:18.033Z
-* Update 826 - Signed off on 2026-04-25T06:31:03.486Z
-* Update 834 - Signed off on 2026-04-28T07:32:21.632Z
-* Update 845 - Signed off on 2026-05-01T23:43:30.906Z
-* Update 931 - Signed off on 2026-06-01T01:30:23.337Z
-* Update 933 - Signed off on 2026-06-01T12:00:41.721Z
-* Update 955 - Signed off on 2026-06-09T11:25:30.506Z
-* Update 997 - Signed off on 2026-06-24T22:57:30.399Z
-* Update 999 - Signed off on 2026-06-25T14:45:58.381Z
+IPFS (InterPlanetary File System) provides decentralized storage for encrypted document payloads.
+
+## Pinata Proxy Architecture
+To avoid exposing Pinata API keys on the client-side, SpooVault routes upload traffic through a local/serverless gateway proxy.
+- **Local Dev Proxy**: Starts via `npm run proxy:pinata` on port 5001.
+- **Client Configuration**: Set `VITE_IPFS_PROXY_URL=http://localhost:5001/api/upload`.
+- **IPFS Pinning**: The proxy handles the Pinata authentication and returns the unique CID (Content Identifier) and gateway path back to the client.

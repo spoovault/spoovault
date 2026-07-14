@@ -1,50 +1,8 @@
-# Developer Notes - Part 16
+# Key Inbox Services & TweetNaCl Asymmetric Cryptography
 
-This document tracks progress, updates, and code reviews.
-* Update 15 - Signed off on 2025-07-19T07:46:12.187Z
-* Update 21 - Signed off on 2025-07-21T02:51:14.890Z
-* Update 22 - Signed off on 2025-07-21T11:06:55.089Z
-* Update 27 - Signed off on 2025-07-23T06:29:45.581Z
-* Update 119 - Signed off on 2025-08-23T15:49:02.442Z
-* Update 126 - Signed off on 2025-08-26T12:22:08.571Z
-* Update 156 - Signed off on 2025-09-06T00:20:32.913Z
-* Update 166 - Signed off on 2025-09-09T07:23:01.378Z
-* Update 191 - Signed off on 2025-09-17T19:01:34.443Z
-* Update 200 - Signed off on 2025-09-21T01:23:37.677Z
-* Update 213 - Signed off on 2025-09-25T11:14:27.279Z
-* Update 220 - Signed off on 2025-09-27T14:31:58.899Z
-* Update 241 - Signed off on 2025-10-05T00:16:19.242Z
-* Update 249 - Signed off on 2025-10-07T23:26:32.002Z
-* Update 250 - Signed off on 2025-10-08T03:48:20.906Z
-* Update 260 - Signed off on 2025-10-11T20:10:04.621Z
-* Update 268 - Signed off on 2025-10-14T08:07:02.672Z
-* Update 301 - Signed off on 2025-10-25T15:24:58.575Z
-* Update 380 - Signed off on 2025-11-22T03:09:46.084Z
-* Update 388 - Signed off on 2025-11-24T11:52:26.809Z
-* Update 403 - Signed off on 2025-11-29T10:26:00.492Z
-* Update 409 - Signed off on 2025-12-01T14:52:40.075Z
-* Update 432 - Signed off on 2025-12-10T00:25:05.469Z
-* Update 451 - Signed off on 2025-12-16T18:08:26.320Z
-* Update 497 - Signed off on 2025-12-31T08:34:27.553Z
-* Update 519 - Signed off on 2026-01-07T14:19:56.593Z
-* Update 599 - Signed off on 2026-02-04T12:53:52.375Z
-* Update 632 - Signed off on 2026-02-16T00:26:04.037Z
-* Update 658 - Signed off on 2026-02-24T21:08:29.716Z
-* Update 727 - Signed off on 2026-03-21T06:32:15.363Z
-* Update 745 - Signed off on 2026-03-27T09:59:32.773Z
-* Update 773 - Signed off on 2026-04-06T15:57:22.177Z
-* Update 789 - Signed off on 2026-04-12T12:12:00.432Z
-* Update 790 - Signed off on 2026-04-12T19:55:52.791Z
-* Update 798 - Signed off on 2026-04-15T02:53:04.786Z
-* Update 806 - Signed off on 2026-04-18T08:06:56.841Z
-* Update 821 - Signed off on 2026-04-23T19:18:44.824Z
-* Update 860 - Signed off on 2026-05-07T09:50:59.417Z
-* Update 889 - Signed off on 2026-05-17T01:06:09.897Z
-* Update 899 - Signed off on 2026-05-20T03:40:03.724Z
-* Update 916 - Signed off on 2026-05-26T16:52:59.482Z
-* Update 935 - Signed off on 2026-06-02T04:52:23.240Z
-* Update 966 - Signed off on 2026-06-13T16:06:55.427Z
-* Update 970 - Signed off on 2026-06-15T05:08:39.422Z
-* Update 978 - Signed off on 2026-06-18T00:02:52.241Z
-* Update 979 - Signed off on 2026-06-18T08:51:43.948Z
-* Update 993 - Signed off on 2026-06-23T13:56:52.989Z
+Asymmetric cryptography is used to securely pass Shamir key shares between the vault creator and guardians.
+
+## Cryptographic Operations (TweetNaCl)
+- **NaCl Box**: Symmetric key shares are encrypted using the sender's private key and the receiver's public key.
+- **Zero-Knowledge Delivery**: The encrypted key share is stored on-chain (or in the IPFS key inbox). Only the specific guardian with the matching private key can decrypt it.
+- **Re-encryption**: Upon approval, the guardian decrypts the share and re-encrypts it using the beneficiary's public key, safeguarding key confidentiality.

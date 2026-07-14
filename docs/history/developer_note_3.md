@@ -1,47 +1,14 @@
-# Developer Notes - Part 3
+# Shamir's Secret Sharing (SSS) Cryptographic Mechanics
 
-This document tracks progress, updates, and code reviews.
-* Update 34 - Signed off on 2025-07-25T23:20:53.004Z
-* Update 55 - Signed off on 2025-08-01T07:39:17.761Z
-* Update 80 - Signed off on 2025-08-10T02:22:56.585Z
-* Update 104 - Signed off on 2025-08-18T03:22:31.281Z
-* Update 111 - Signed off on 2025-08-20T17:10:58.396Z
-* Update 116 - Signed off on 2025-08-22T12:26:56.324Z
-* Update 130 - Signed off on 2025-08-27T12:25:33.169Z
-* Update 132 - Signed off on 2025-08-28T03:44:56.892Z
-* Update 145 - Signed off on 2025-09-01T22:36:29.511Z
-* Update 183 - Signed off on 2025-09-15T07:17:44.149Z
-* Update 199 - Signed off on 2025-09-20T19:41:25.154Z
-* Update 214 - Signed off on 2025-09-25T17:31:31.453Z
-* Update 230 - Signed off on 2025-09-30T19:52:13.312Z
-* Update 282 - Signed off on 2025-10-19T19:21:52.119Z
-* Update 292 - Signed off on 2025-10-22T23:29:41.446Z
-* Update 295 - Signed off on 2025-10-23T21:29:22.534Z
-* Update 307 - Signed off on 2025-10-27T12:52:11.320Z
-* Update 312 - Signed off on 2025-10-29T18:28:46.656Z
-* Update 327 - Signed off on 2025-11-04T07:35:47.000Z
-* Update 357 - Signed off on 2025-11-14T00:06:38.296Z
-* Update 390 - Signed off on 2025-11-24T22:23:57.118Z
-* Update 410 - Signed off on 2025-12-02T01:10:00.679Z
-* Update 431 - Signed off on 2025-12-09T12:32:35.923Z
-* Update 435 - Signed off on 2025-12-11T00:05:11.190Z
-* Update 450 - Signed off on 2025-12-16T11:26:02.767Z
-* Update 531 - Signed off on 2026-01-11T20:30:00.034Z
-* Update 547 - Signed off on 2026-01-18T06:48:21.081Z
-* Update 553 - Signed off on 2026-01-20T03:43:54.911Z
-* Update 567 - Signed off on 2026-01-24T11:57:37.892Z
-* Update 615 - Signed off on 2026-02-10T15:18:36.301Z
-* Update 657 - Signed off on 2026-02-24T12:50:07.872Z
-* Update 693 - Signed off on 2026-03-09T18:49:04.776Z
-* Update 728 - Signed off on 2026-03-21T16:37:17.738Z
-* Update 739 - Signed off on 2026-03-25T03:44:36.865Z
-* Update 804 - Signed off on 2026-04-17T15:52:33.546Z
-* Update 829 - Signed off on 2026-04-26T12:01:07.684Z
-* Update 837 - Signed off on 2026-04-29T07:11:16.754Z
-* Update 847 - Signed off on 2026-05-02T17:09:32.026Z
-* Update 864 - Signed off on 2026-05-08T19:27:46.079Z
-* Update 894 - Signed off on 2026-05-18T09:59:49.902Z
-* Update 910 - Signed off on 2026-05-24T05:53:10.964Z
-* Update 986 - Signed off on 2026-06-20T16:57:52.732Z
-* Update 991 - Signed off on 2026-06-22T19:55:31.442Z
-* Update 994 - Signed off on 2026-06-23T19:35:42.105Z
+SpooVault splits document decryption keys using Shamir's Secret Sharing over Galois Field 256 ($GF(256)$).
+
+## mathematical Outline
+A secret $S$ is divided into $n$ shares such that any $k$ shares are sufficient to reconstruct $S$, but any $k-1$ shares reveal zero information about the secret.
+
+- A random polynomial $f(x) = a_0 + a_1 x + a_2 x^2 + dots + a_{k-1} x^{k-1}$ of degree $k-1$ is constructed, where $a_0 = S$.
+- Shares are pairs $(i, f(i))$ for $i = 1, dots, n$.
+- Reconstruction uses Lagrange Interpolation:
+  $$S = f(0) = sum_{j=1}^{k} y_j prod_{m 
+eq j} rac{x_m}{x_m - x_j}$$
+
+Our TypeScript implementation is verified by `scripts/test-sss.mjs`, testing splitting, reconstruction, and below-threshold safety.

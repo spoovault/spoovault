@@ -1,63 +1,9 @@
-# Developer Notes - Part 20
+# Project Development Roadmap & Future Soroban Tasks
 
-This document tracks progress, updates, and code reviews.
-* Update 14 - Signed off on 2025-07-18T23:08:21.574Z
-* Update 17 - Signed off on 2025-07-20T00:51:27.440Z
-* Update 18 - Signed off on 2025-07-20T06:16:31.122Z
-* Update 23 - Signed off on 2025-07-21T21:02:32.503Z
-* Update 46 - Signed off on 2025-07-29T12:32:23.065Z
-* Update 90 - Signed off on 2025-08-13T00:57:37.250Z
-* Update 98 - Signed off on 2025-08-15T21:19:13.340Z
-* Update 109 - Signed off on 2025-08-19T23:16:51.014Z
-* Update 118 - Signed off on 2025-08-23T07:52:00.646Z
-* Update 128 - Signed off on 2025-08-27T00:16:03.498Z
-* Update 135 - Signed off on 2025-08-29T09:19:16.205Z
-* Update 141 - Signed off on 2025-08-31T07:59:46.806Z
-* Update 148 - Signed off on 2025-09-03T01:01:49.983Z
-* Update 172 - Signed off on 2025-09-11T05:13:53.774Z
-* Update 194 - Signed off on 2025-09-18T23:55:44.893Z
-* Update 222 - Signed off on 2025-09-28T09:51:46.285Z
-* Update 225 - Signed off on 2025-09-29T05:07:07.387Z
-* Update 238 - Signed off on 2025-10-04T00:14:34.984Z
-* Update 243 - Signed off on 2025-10-05T20:17:26.373Z
-* Update 261 - Signed off on 2025-10-12T03:08:02.484Z
-* Update 294 - Signed off on 2025-10-23T12:16:30.053Z
-* Update 300 - Signed off on 2025-10-25T06:31:52.224Z
-* Update 315 - Signed off on 2025-10-30T15:20:59.013Z
-* Update 320 - Signed off on 2025-11-01T07:09:23.482Z
-* Update 336 - Signed off on 2025-11-07T02:06:10.977Z
-* Update 367 - Signed off on 2025-11-17T15:10:54.254Z
-* Update 447 - Signed off on 2025-12-15T00:39:42.941Z
-* Update 459 - Signed off on 2025-12-19T00:50:55.487Z
-* Update 462 - Signed off on 2025-12-20T00:07:25.805Z
-* Update 464 - Signed off on 2025-12-20T14:01:25.213Z
-* Update 465 - Signed off on 2025-12-21T01:28:05.845Z
-* Update 479 - Signed off on 2025-12-25T03:02:49.050Z
-* Update 504 - Signed off on 2026-01-02T16:35:29.491Z
-* Update 529 - Signed off on 2026-01-11T05:07:29.354Z
-* Update 546 - Signed off on 2026-01-17T22:38:23.227Z
-* Update 563 - Signed off on 2026-01-23T06:50:54.580Z
-* Update 605 - Signed off on 2026-02-06T20:18:07.979Z
-* Update 631 - Signed off on 2026-02-15T14:49:54.492Z
-* Update 680 - Signed off on 2026-03-04T22:57:37.925Z
-* Update 703 - Signed off on 2026-03-13T02:04:20.326Z
-* Update 725 - Signed off on 2026-03-20T17:18:35.330Z
-* Update 737 - Signed off on 2026-03-24T15:22:07.116Z
-* Update 747 - Signed off on 2026-03-28T04:29:07.072Z
-* Update 772 - Signed off on 2026-04-06T06:23:49.333Z
-* Update 776 - Signed off on 2026-04-07T22:33:15.983Z
-* Update 784 - Signed off on 2026-04-10T13:48:05.142Z
-* Update 815 - Signed off on 2026-04-21T15:48:07.449Z
-* Update 836 - Signed off on 2026-04-29T01:48:53.175Z
-* Update 862 - Signed off on 2026-05-07T21:30:28.856Z
-* Update 903 - Signed off on 2026-05-21T14:58:36.889Z
-* Update 904 - Signed off on 2026-05-21T21:40:25.778Z
-* Update 920 - Signed off on 2026-05-28T00:48:51.950Z
-* Update 923 - Signed off on 2026-05-29T02:28:21.396Z
-* Update 937 - Signed off on 2026-06-02T21:22:20.248Z
-* Update 940 - Signed off on 2026-06-04T02:51:44.924Z
-* Update 947 - Signed off on 2026-06-06T08:47:28.852Z
-* Update 951 - Signed off on 2026-06-07T18:55:54.445Z
-* Update 971 - Signed off on 2026-06-15T16:37:33.322Z
-* Update 975 - Signed off on 2026-06-17T00:42:05.124Z
-* Update 992 - Signed off on 2026-06-23T07:47:19.455Z
+Future goals for SpooVault development.
+
+## Roadmap Goals
+- **Fully On-Chain Soroban Integration**: Connect Freighter transactions directly in `stellar.service.ts` rather than falling back to local mocks.
+- **Multi-Guardian Key Reassembly UI**: Improve the key reassembly visual progress bar for beneficiaries waiting for approvals.
+- **NFT Access Passes**: Implement ERC-721 / Stellar Token token-gated access for specific custody vaults.
+- **Multi-File Uploads**: Add support for uploading directories or ZIP packages with unified key splits.

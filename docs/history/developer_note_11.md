@@ -1,62 +1,13 @@
-# Developer Notes - Part 11
+# Release Conditions & Proof-of-Life Timers
 
-This document tracks progress, updates, and code reviews.
-* Update 66 - Signed off on 2025-08-05T07:05:56.566Z
-* Update 79 - Signed off on 2025-08-09T15:35:53.984Z
-* Update 96 - Signed off on 2025-08-15T04:30:06.791Z
-* Update 143 - Signed off on 2025-09-01T08:20:15.062Z
-* Update 147 - Signed off on 2025-09-02T16:34:35.171Z
-* Update 159 - Signed off on 2025-09-06T22:58:25.417Z
-* Update 171 - Signed off on 2025-09-10T20:13:43.179Z
-* Update 186 - Signed off on 2025-09-16T08:26:37.803Z
-* Update 203 - Signed off on 2025-09-22T01:02:43.307Z
-* Update 235 - Signed off on 2025-10-02T18:06:45.583Z
-* Update 237 - Signed off on 2025-10-03T12:26:50.429Z
-* Update 258 - Signed off on 2025-10-11T06:28:04.845Z
-* Update 283 - Signed off on 2025-10-20T02:44:43.813Z
-* Update 302 - Signed off on 2025-10-25T23:35:39.224Z
-* Update 310 - Signed off on 2025-10-28T17:49:06.164Z
-* Update 339 - Signed off on 2025-11-07T22:20:54.413Z
-* Update 355 - Signed off on 2025-11-13T10:56:40.744Z
-* Update 356 - Signed off on 2025-11-13T18:29:19.837Z
-* Update 359 - Signed off on 2025-11-14T16:22:26.413Z
-* Update 383 - Signed off on 2025-11-22T23:57:54.546Z
-* Update 394 - Signed off on 2025-11-26T09:50:37.501Z
-* Update 397 - Signed off on 2025-11-27T04:47:28.370Z
-* Update 399 - Signed off on 2025-11-28T03:27:10.730Z
-* Update 416 - Signed off on 2025-12-04T10:41:44.583Z
-* Update 442 - Signed off on 2025-12-13T04:46:54.402Z
-* Update 445 - Signed off on 2025-12-14T05:42:54.022Z
-* Update 457 - Signed off on 2025-12-18T11:36:02.750Z
-* Update 490 - Signed off on 2025-12-28T19:50:16.788Z
-* Update 491 - Signed off on 2025-12-29T07:40:58.124Z
-* Update 499 - Signed off on 2026-01-01T05:19:49.423Z
-* Update 535 - Signed off on 2026-01-13T08:57:39.970Z
-* Update 548 - Signed off on 2026-01-18T14:09:05.216Z
-* Update 572 - Signed off on 2026-01-26T03:49:54.560Z
-* Update 620 - Signed off on 2026-02-12T01:09:20.038Z
-* Update 634 - Signed off on 2026-02-16T14:14:05.844Z
-* Update 644 - Signed off on 2026-02-20T09:59:11.475Z
-* Update 654 - Signed off on 2026-02-23T11:38:59.558Z
-* Update 661 - Signed off on 2026-02-26T02:10:49.537Z
-* Update 713 - Signed off on 2026-03-16T05:01:01.077Z
-* Update 718 - Signed off on 2026-03-17T21:24:28.055Z
-* Update 723 - Signed off on 2026-03-19T18:34:52.921Z
-* Update 738 - Signed off on 2026-03-24T19:38:01.781Z
-* Update 740 - Signed off on 2026-03-25T08:27:46.388Z
-* Update 746 - Signed off on 2026-03-27T18:36:22.585Z
-* Update 769 - Signed off on 2026-04-05T04:27:03.350Z
-* Update 770 - Signed off on 2026-04-05T15:16:22.434Z
-* Update 771 - Signed off on 2026-04-06T00:47:38.069Z
-* Update 774 - Signed off on 2026-04-07T04:24:28.031Z
-* Update 779 - Signed off on 2026-04-08T20:07:06.982Z
-* Update 839 - Signed off on 2026-04-30T00:08:53.581Z
-* Update 855 - Signed off on 2026-05-05T19:11:03.467Z
-* Update 868 - Signed off on 2026-05-09T22:26:01.305Z
-* Update 877 - Signed off on 2026-05-12T20:24:22.446Z
-* Update 886 - Signed off on 2026-05-16T04:43:55.579Z
-* Update 926 - Signed off on 2026-05-30T04:07:15.225Z
-* Update 952 - Signed off on 2026-06-08T04:41:44.892Z
-* Update 953 - Signed off on 2026-06-08T16:47:01.220Z
-* Update 969 - Signed off on 2026-06-14T21:14:54.803Z
-* Update 985 - Signed off on 2026-06-20T10:50:00.292Z
+Vaults can be configured to release documents automatically under specific circumstances, such as inactivity.
+
+## Release Modes
+1. **Anytime**: Instant access.
+2. **LiveOnly**: Accessible only while the owner is actively verifying their presence.
+3. **EmergencyOnly**: Accessible in emergency mode or if the owner is inactive.
+4. **PostDeathOnly**: Unlocked strictly after the inactivity threshold is exceeded.
+
+## Proof-of-Life Mechanism
+- The vault creator records a "Proof of Life" on-chain (`proveLife`).
+- If no proof is registered for longer than the `inactivityPeriod` (e.g., 30 days), the vault enters a "post-death" status, allowing beneficiary requests.

@@ -1,53 +1,8 @@
-# Developer Notes - Part 18
+# Security Auditing & Code Hardening Standards
 
-This document tracks progress, updates, and code reviews.
-* Update 49 - Signed off on 2025-07-30T12:18:57.913Z
-* Update 74 - Signed off on 2025-08-07T20:50:18.468Z
-* Update 92 - Signed off on 2025-08-13T23:04:20.974Z
-* Update 95 - Signed off on 2025-08-14T16:54:26.555Z
-* Update 120 - Signed off on 2025-08-24T02:48:53.280Z
-* Update 124 - Signed off on 2025-08-25T17:42:46.181Z
-* Update 154 - Signed off on 2025-09-05T05:56:14.084Z
-* Update 223 - Signed off on 2025-09-28T18:21:45.707Z
-* Update 229 - Signed off on 2025-09-30T13:59:18.273Z
-* Update 280 - Signed off on 2025-10-18T19:50:55.492Z
-* Update 284 - Signed off on 2025-10-20T06:55:44.616Z
-* Update 287 - Signed off on 2025-10-21T12:17:13.566Z
-* Update 321 - Signed off on 2025-11-01T16:40:35.707Z
-* Update 334 - Signed off on 2025-11-06T13:37:53.492Z
-* Update 358 - Signed off on 2025-11-14T09:48:47.668Z
-* Update 364 - Signed off on 2025-11-16T18:32:47.376Z
-* Update 393 - Signed off on 2025-11-26T02:13:08.455Z
-* Update 402 - Signed off on 2025-11-29T01:40:13.681Z
-* Update 411 - Signed off on 2025-12-02T11:58:19.109Z
-* Update 440 - Signed off on 2025-12-12T09:24:18.594Z
-* Update 441 - Signed off on 2025-12-12T19:07:24.984Z
-* Update 478 - Signed off on 2025-12-24T17:55:27.548Z
-* Update 482 - Signed off on 2025-12-25T22:10:59.043Z
-* Update 511 - Signed off on 2026-01-05T04:00:04.151Z
-* Update 566 - Signed off on 2026-01-24T05:40:42.809Z
-* Update 570 - Signed off on 2026-01-25T06:01:28.791Z
-* Update 610 - Signed off on 2026-02-08T21:44:53.779Z
-* Update 624 - Signed off on 2026-02-13T04:08:45.258Z
-* Update 640 - Signed off on 2026-02-18T20:07:11.991Z
-* Update 653 - Signed off on 2026-02-23T02:37:08.275Z
-* Update 688 - Signed off on 2026-03-08T02:41:44.470Z
-* Update 720 - Signed off on 2026-03-18T14:29:43.390Z
-* Update 722 - Signed off on 2026-03-19T12:19:28.643Z
-* Update 744 - Signed off on 2026-03-26T22:39:10.313Z
-* Update 751 - Signed off on 2026-03-29T17:06:27.385Z
-* Update 762 - Signed off on 2026-04-02T15:37:07.211Z
-* Update 775 - Signed off on 2026-04-07T10:16:16.262Z
-* Update 777 - Signed off on 2026-04-08T06:28:34.492Z
-* Update 795 - Signed off on 2026-04-14T02:43:40.181Z
-* Update 800 - Signed off on 2026-04-15T19:12:07.564Z
-* Update 808 - Signed off on 2026-04-19T01:59:11.047Z
-* Update 817 - Signed off on 2026-04-22T08:15:08.510Z
-* Update 842 - Signed off on 2026-05-01T04:38:16.460Z
-* Update 880 - Signed off on 2026-05-14T01:11:12.923Z
-* Update 911 - Signed off on 2026-05-24T17:38:03.991Z
-* Update 941 - Signed off on 2026-06-04T07:12:37.250Z
-* Update 954 - Signed off on 2026-06-09T03:43:59.299Z
-* Update 960 - Signed off on 2026-06-11T01:46:15.640Z
-* Update 980 - Signed off on 2026-06-18T16:55:16.749Z
-* Update 988 - Signed off on 2026-06-21T14:21:29.434Z
+Secure development practices are fundamental to document custody security.
+
+## Code Standards
+- **Solidity**: Follows CEI (Checks-Effects-Interactions) patterns to prevent re-entrancy attacks.
+- **Rust**: Minimizes panic boundaries and validates authorization via `Address::require_auth()` before any state mutation.
+- **Zero Local Logs**: Decryption keys and unencrypted file buffers are cleared from browser memory as soon as the file download/assembly is completed.

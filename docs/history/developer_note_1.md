@@ -1,52 +1,11 @@
-# Developer Notes - Part 1
+# SpooVault Architecture & Multi-Chain Design
 
-This document tracks progress, updates, and code reviews.
-* Update 26 - Signed off on 2025-07-22T20:09:39.846Z
-* Update 60 - Signed off on 2025-08-03T04:23:48.012Z
-* Update 70 - Signed off on 2025-08-06T18:27:58.515Z
-* Update 81 - Signed off on 2025-08-10T07:36:21.888Z
-* Update 105 - Signed off on 2025-08-18T10:13:31.454Z
-* Update 115 - Signed off on 2025-08-22T02:51:14.239Z
-* Update 146 - Signed off on 2025-09-02T09:05:54.583Z
-* Update 151 - Signed off on 2025-09-04T03:55:22.901Z
-* Update 167 - Signed off on 2025-09-09T15:55:47.510Z
-* Update 210 - Signed off on 2025-09-24T11:52:19.412Z
-* Update 289 - Signed off on 2025-10-22T02:18:02.986Z
-* Update 361 - Signed off on 2025-11-15T08:24:23.256Z
-* Update 363 - Signed off on 2025-11-16T06:29:23.678Z
-* Update 368 - Signed off on 2025-11-17T21:37:46.456Z
-* Update 377 - Signed off on 2025-11-21T10:50:29.622Z
-* Update 384 - Signed off on 2025-11-23T07:20:07.725Z
-* Update 385 - Signed off on 2025-11-23T12:28:59.616Z
-* Update 405 - Signed off on 2025-11-29T23:40:07.193Z
-* Update 419 - Signed off on 2025-12-05T11:52:22.129Z
-* Update 420 - Signed off on 2025-12-05T16:17:13.079Z
-* Update 428 - Signed off on 2025-12-08T16:14:27.391Z
-* Update 437 - Signed off on 2025-12-11T14:08:41.049Z
-* Update 472 - Signed off on 2025-12-23T04:46:36.836Z
-* Update 477 - Signed off on 2025-12-24T12:30:09.232Z
-* Update 489 - Signed off on 2025-12-28T13:21:40.111Z
-* Update 518 - Signed off on 2026-01-07T05:12:37.394Z
-* Update 549 - Signed off on 2026-01-18T22:25:10.999Z
-* Update 551 - Signed off on 2026-01-19T08:36:53.161Z
-* Update 608 - Signed off on 2026-02-07T22:18:46.288Z
-* Update 619 - Signed off on 2026-02-11T15:42:00.983Z
-* Update 628 - Signed off on 2026-02-14T15:22:25.605Z
-* Update 635 - Signed off on 2026-02-16T18:44:47.757Z
-* Update 650 - Signed off on 2026-02-22T00:26:06.837Z
-* Update 668 - Signed off on 2026-02-28T10:23:34.571Z
-* Update 677 - Signed off on 2026-03-03T14:53:15.438Z
-* Update 686 - Signed off on 2026-03-07T08:41:10.716Z
-* Update 710 - Signed off on 2026-03-15T06:53:36.627Z
-* Update 757 - Signed off on 2026-03-31T22:43:40.216Z
-* Update 761 - Signed off on 2026-04-02T09:34:35.976Z
-* Update 783 - Signed off on 2026-04-10T07:18:09.178Z
-* Update 851 - Signed off on 2026-05-04T06:57:26.458Z
-* Update 876 - Signed off on 2026-05-12T14:34:12.405Z
-* Update 898 - Signed off on 2026-05-19T19:11:04.596Z
-* Update 915 - Signed off on 2026-05-26T10:39:53.856Z
-* Update 943 - Signed off on 2026-06-04T21:28:03.637Z
-* Update 962 - Signed off on 2026-06-12T00:40:38.384Z
-* Update 967 - Signed off on 2026-06-14T02:02:04.425Z
-* Update 968 - Signed off on 2026-06-14T11:02:34.886Z
-* Update 972 - Signed off on 2026-06-15T23:17:20.266Z
+SpooVault is built as a zero-knowledge document custody platform that leverages both EVM-compatible networks (like Avalanche Fuji) and Stellar Soroban. 
+
+## Architectural Layering
+1. **Presentation Layer**: React + TypeScript frontend utilizing Tailwind CSS and HeroUI.
+2. **Security & Cryptography Layer**: Client-side AES-256 encryption combined with Shamir's Secret Sharing (SSS) for secret key splitting.
+3. **Storage Layer**: IPFS via Pinata gateway (abstracted behind a local/serverless proxy to secure API keys).
+4. **On-Chain Layer**: Smart contracts orchestrating vault access rules, guardian thresholds, and release conditions.
+
+By employing a multi-chain strategy, users can store vault records on their preferred ledger, taking advantage of different speed, security, and fee structures.

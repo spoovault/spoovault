@@ -1,50 +1,18 @@
-# Developer Notes - Part 13
+# Smart Contract Test Execution (Hardhat & Cargo test)
 
-This document tracks progress, updates, and code reviews.
-* Update 29 - Signed off on 2025-07-24T06:01:00.059Z
-* Update 84 - Signed off on 2025-08-11T07:10:24.109Z
-* Update 91 - Signed off on 2025-08-13T11:15:58.587Z
-* Update 138 - Signed off on 2025-08-30T02:46:47.300Z
-* Update 161 - Signed off on 2025-09-07T13:18:13.303Z
-* Update 170 - Signed off on 2025-09-10T12:37:58.479Z
-* Update 257 - Signed off on 2025-10-10T20:30:20.132Z
-* Update 271 - Signed off on 2025-10-15T09:46:26.252Z
-* Update 296 - Signed off on 2025-10-24T03:11:38.425Z
-* Update 324 - Signed off on 2025-11-03T02:26:38.609Z
-* Update 348 - Signed off on 2025-11-11T00:56:39.966Z
-* Update 352 - Signed off on 2025-11-12T11:56:22.404Z
-* Update 362 - Signed off on 2025-11-15T19:08:12.439Z
-* Update 369 - Signed off on 2025-11-18T02:31:25.286Z
-* Update 381 - Signed off on 2025-11-22T08:10:15.734Z
-* Update 401 - Signed off on 2025-11-28T13:25:17.930Z
-* Update 424 - Signed off on 2025-12-07T05:32:18.316Z
-* Update 436 - Signed off on 2025-12-11T07:25:43.660Z
-* Update 456 - Signed off on 2025-12-18T02:23:52.958Z
-* Update 485 - Signed off on 2025-12-26T22:37:53.658Z
-* Update 530 - Signed off on 2026-01-11T09:34:01.065Z
-* Update 538 - Signed off on 2026-01-14T11:21:47.706Z
-* Update 542 - Signed off on 2026-01-16T00:27:03.451Z
-* Update 545 - Signed off on 2026-01-17T10:56:34.273Z
-* Update 561 - Signed off on 2026-01-22T11:29:21.193Z
-* Update 580 - Signed off on 2026-01-28T21:43:44.425Z
-* Update 581 - Signed off on 2026-01-29T05:31:26.744Z
-* Update 598 - Signed off on 2026-02-04T03:20:57.860Z
-* Update 602 - Signed off on 2026-02-05T16:56:00.983Z
-* Update 611 - Signed off on 2026-02-09T03:01:51.643Z
-* Update 621 - Signed off on 2026-02-12T09:55:00.332Z
-* Update 663 - Signed off on 2026-02-26T19:33:10.829Z
-* Update 694 - Signed off on 2026-03-10T02:44:41.618Z
-* Update 705 - Signed off on 2026-03-13T22:33:35.248Z
-* Update 715 - Signed off on 2026-03-16T21:14:45.427Z
-* Update 726 - Signed off on 2026-03-21T01:45:37.271Z
-* Update 748 - Signed off on 2026-03-28T09:56:57.740Z
-* Update 755 - Signed off on 2026-03-31T05:46:28.952Z
-* Update 788 - Signed off on 2026-04-11T23:45:49.980Z
-* Update 812 - Signed off on 2026-04-20T09:10:18.621Z
-* Update 857 - Signed off on 2026-05-06T12:20:24.983Z
-* Update 874 - Signed off on 2026-05-12T01:50:52.502Z
-* Update 897 - Signed off on 2026-05-19T14:17:58.315Z
-* Update 906 - Signed off on 2026-05-22T16:14:13.966Z
-* Update 929 - Signed off on 2026-05-31T06:08:47.361Z
-* Update 939 - Signed off on 2026-06-03T19:18:57.773Z
-* Update 974 - Signed off on 2026-06-16T15:15:26.393Z
+Continuous testing ensures the smart contracts behave correctly before deployment.
+
+## Running Solidity Tests (EVM)
+To compile contracts and run the Hardhat test suite:
+```bash
+npx hardhat compile
+npx hardhat test
+```
+
+## Running Rust Tests (Soroban)
+To execute tests in the Rust Soroban contract:
+```bash
+cd contracts-stellar
+cargo test
+```
+Tests verify the creation of vaults, invite acceptance, public key registrations, and threshold logic.

@@ -1,59 +1,13 @@
-# Developer Notes - Part 15
+# Frontend Context Routing & State Management (Zustand)
 
-This document tracks progress, updates, and code reviews.
-* Update 32 - Signed off on 2025-07-25T06:33:57.348Z
-* Update 42 - Signed off on 2025-07-28T07:56:37.336Z
-* Update 44 - Signed off on 2025-07-28T23:03:14.440Z
-* Update 88 - Signed off on 2025-08-12T12:50:59.275Z
-* Update 97 - Signed off on 2025-08-15T13:33:41.437Z
-* Update 103 - Signed off on 2025-08-17T17:53:11.611Z
-* Update 144 - Signed off on 2025-09-01T16:11:54.157Z
-* Update 228 - Signed off on 2025-09-30T06:05:33.141Z
-* Update 245 - Signed off on 2025-10-06T18:54:21.557Z
-* Update 259 - Signed off on 2025-10-11T11:48:33.591Z
-* Update 263 - Signed off on 2025-10-12T21:23:06.294Z
-* Update 269 - Signed off on 2025-10-14T14:41:21.061Z
-* Update 278 - Signed off on 2025-10-18T00:39:22.026Z
-* Update 290 - Signed off on 2025-10-22T08:53:22.043Z
-* Update 309 - Signed off on 2025-10-28T09:30:25.910Z
-* Update 328 - Signed off on 2025-11-04T14:52:02.769Z
-* Update 338 - Signed off on 2025-11-07T15:27:30.626Z
-* Update 347 - Signed off on 2025-11-10T19:52:42.271Z
-* Update 398 - Signed off on 2025-11-27T15:59:42.313Z
-* Update 408 - Signed off on 2025-12-01T05:54:41.959Z
-* Update 448 - Signed off on 2025-12-15T11:36:44.142Z
-* Update 475 - Signed off on 2025-12-24T00:50:19.337Z
-* Update 481 - Signed off on 2025-12-25T15:34:48.944Z
-* Update 505 - Signed off on 2026-01-03T02:37:19.633Z
-* Update 506 - Signed off on 2026-01-03T12:29:47.593Z
-* Update 526 - Signed off on 2026-01-10T04:22:25.582Z
-* Update 562 - Signed off on 2026-01-22T23:33:56.061Z
-* Update 584 - Signed off on 2026-01-30T10:22:47.688Z
-* Update 589 - Signed off on 2026-02-01T04:31:39.888Z
-* Update 604 - Signed off on 2026-02-06T10:05:06.312Z
-* Update 616 - Signed off on 2026-02-10T20:03:13.152Z
-* Update 622 - Signed off on 2026-02-12T15:35:06.304Z
-* Update 625 - Signed off on 2026-02-13T11:49:51.396Z
-* Update 627 - Signed off on 2026-02-14T05:18:17.624Z
-* Update 629 - Signed off on 2026-02-14T21:31:29.761Z
-* Update 639 - Signed off on 2026-02-18T12:21:05.367Z
-* Update 645 - Signed off on 2026-02-20T14:33:02.990Z
-* Update 648 - Signed off on 2026-02-21T09:54:54.561Z
-* Update 664 - Signed off on 2026-02-27T06:13:57.260Z
-* Update 685 - Signed off on 2026-03-06T22:55:16.039Z
-* Update 733 - Signed off on 2026-03-23T12:09:01.011Z
-* Update 786 - Signed off on 2026-04-11T07:42:57.772Z
-* Update 796 - Signed off on 2026-04-14T12:10:29.028Z
-* Update 801 - Signed off on 2026-04-16T06:38:16.650Z
-* Update 807 - Signed off on 2026-04-18T14:05:20.622Z
-* Update 813 - Signed off on 2026-04-20T18:18:03.704Z
-* Update 843 - Signed off on 2026-05-01T10:58:08.827Z
-* Update 846 - Signed off on 2026-05-02T08:46:27.650Z
-* Update 875 - Signed off on 2026-05-12T07:27:47.360Z
-* Update 884 - Signed off on 2026-05-15T17:50:30.435Z
-* Update 896 - Signed off on 2026-05-19T05:29:47.422Z
-* Update 900 - Signed off on 2026-05-20T11:16:41.626Z
-* Update 908 - Signed off on 2026-05-23T08:50:12.970Z
-* Update 921 - Signed off on 2026-05-28T10:35:56.826Z
-* Update 961 - Signed off on 2026-06-11T13:36:42.759Z
-* Update 981 - Signed off on 2026-06-18T23:43:14.609Z
+Global frontend states, wallet connections, and notifications are managed via state stores.
+
+## State Management (Zustand)
+We utilize lightweight Zustand stores to keep track of:
+- Current active account address.
+- Loaded vaults list.
+- User encryption key status.
+- Connected network parameters.
+
+## Web3 Context Wrapper
+The `Web3Context.tsx` wraps the React application, providing unified entry points to connect, switch networks, fetch balances, and trigger transactions, abstracts whether the active chain is EVM or Stellar.

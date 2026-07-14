@@ -1,54 +1,13 @@
-# Developer Notes - Part 12
+# Local Development Workspace & System Prerequisites
 
-This document tracks progress, updates, and code reviews.
-* Update 2 - Signed off on 2025-07-14T23:24:17.458Z
-* Update 25 - Signed off on 2025-07-22T14:43:29.075Z
-* Update 28 - Signed off on 2025-07-23T18:12:22.148Z
-* Update 43 - Signed off on 2025-07-28T16:04:49.819Z
-* Update 61 - Signed off on 2025-08-03T11:44:13.365Z
-* Update 82 - Signed off on 2025-08-10T12:19:56.626Z
-* Update 87 - Signed off on 2025-08-12T07:56:24.671Z
-* Update 94 - Signed off on 2025-08-14T11:52:36.751Z
-* Update 131 - Signed off on 2025-08-27T22:21:48.531Z
-* Update 165 - Signed off on 2025-09-08T22:48:10.643Z
-* Update 187 - Signed off on 2025-09-16T13:13:53.790Z
-* Update 189 - Signed off on 2025-09-17T06:53:59.245Z
-* Update 195 - Signed off on 2025-09-19T04:50:54.527Z
-* Update 202 - Signed off on 2025-09-21T14:11:13.058Z
-* Update 227 - Signed off on 2025-09-29T23:46:26.218Z
-* Update 306 - Signed off on 2025-10-27T07:41:55.392Z
-* Update 331 - Signed off on 2025-11-05T14:32:20.451Z
-* Update 375 - Signed off on 2025-11-20T15:15:07.868Z
-* Update 379 - Signed off on 2025-11-21T21:15:36.538Z
-* Update 382 - Signed off on 2025-11-22T14:42:42.677Z
-* Update 423 - Signed off on 2025-12-06T18:20:54.240Z
-* Update 453 - Signed off on 2025-12-17T09:40:10.517Z
-* Update 458 - Signed off on 2025-12-18T18:06:56.024Z
-* Update 470 - Signed off on 2025-12-22T17:16:29.369Z
-* Update 476 - Signed off on 2025-12-24T05:35:02.803Z
-* Update 488 - Signed off on 2025-12-28T01:37:14.874Z
-* Update 496 - Signed off on 2025-12-31T03:12:49.296Z
-* Update 515 - Signed off on 2026-01-06T08:41:41.674Z
-* Update 539 - Signed off on 2026-01-14T17:42:59.710Z
-* Update 550 - Signed off on 2026-01-19T03:47:02.061Z
-* Update 558 - Signed off on 2026-01-21T07:32:16.792Z
-* Update 568 - Signed off on 2026-01-24T18:09:01.020Z
-* Update 569 - Signed off on 2026-01-25T00:32:13.211Z
-* Update 571 - Signed off on 2026-01-25T17:07:57.343Z
-* Update 592 - Signed off on 2026-02-02T09:25:42.466Z
-* Update 606 - Signed off on 2026-02-07T05:21:11.288Z
-* Update 607 - Signed off on 2026-02-07T14:54:40.107Z
-* Update 613 - Signed off on 2026-02-09T23:03:50.590Z
-* Update 660 - Signed off on 2026-02-25T16:26:15.277Z
-* Update 669 - Signed off on 2026-02-28T17:59:46.423Z
-* Update 708 - Signed off on 2026-03-14T16:25:35.178Z
-* Update 756 - Signed off on 2026-03-31T14:58:12.672Z
-* Update 765 - Signed off on 2026-04-03T18:42:37.138Z
-* Update 767 - Signed off on 2026-04-04T09:14:38.477Z
-* Update 768 - Signed off on 2026-04-04T20:10:21.526Z
-* Update 841 - Signed off on 2026-04-30T16:49:00.706Z
-* Update 861 - Signed off on 2026-05-07T14:39:22.482Z
-* Update 871 - Signed off on 2026-05-11T02:01:22.642Z
-* Update 881 - Signed off on 2026-05-14T12:05:49.964Z
-* Update 895 - Signed off on 2026-05-18T20:37:39.492Z
-* Update 963 - Signed off on 2026-06-12T10:57:50.891Z
+Ensure the following tools are installed to run SpooVault locally.
+
+## Development Toolkit
+- **Node.js**: Version 18+ and npm.
+- **Rust Compiler**: Required for compiling Soroban contracts:
+  ```bash
+  rustup target add wasm32-unknown-unknown
+  ```
+- **Hardhat CLI**: Node package for running local Hardhat nodes and Solidity compilation.
+- **freighter Wallet & MetaMask**: Browser extensions set to Testnets.
+- **Pinata Account**: API keys for IPFS proxy configuration.

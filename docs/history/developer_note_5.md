@@ -1,40 +1,12 @@
-# Developer Notes - Part 5
+# EVM Contract Specifications (Solidity + Hardhat)
 
-This document tracks progress, updates, and code reviews.
-* Update 6 - Signed off on 2025-07-16T07:29:05.651Z
-* Update 30 - Signed off on 2025-07-24T12:24:33.820Z
-* Update 47 - Signed off on 2025-07-29T20:15:27.910Z
-* Update 51 - Signed off on 2025-07-31T02:19:31.824Z
-* Update 102 - Signed off on 2025-08-17T08:41:53.968Z
-* Update 110 - Signed off on 2025-08-20T05:42:57.354Z
-* Update 122 - Signed off on 2025-08-25T01:02:55.797Z
-* Update 129 - Signed off on 2025-08-27T06:12:21.308Z
-* Update 139 - Signed off on 2025-08-30T11:20:40.154Z
-* Update 157 - Signed off on 2025-09-06T08:43:57.913Z
-* Update 182 - Signed off on 2025-09-14T19:45:01.250Z
-* Update 193 - Signed off on 2025-09-18T17:08:01.030Z
-* Update 236 - Signed off on 2025-10-03T02:50:35.034Z
-* Update 253 - Signed off on 2025-10-09T04:04:40.767Z
-* Update 337 - Signed off on 2025-11-07T08:56:08.643Z
-* Update 350 - Signed off on 2025-11-11T15:25:11.902Z
-* Update 354 - Signed off on 2025-11-13T05:21:21.796Z
-* Update 395 - Signed off on 2025-11-26T17:59:00.220Z
-* Update 415 - Signed off on 2025-12-04T03:54:55.780Z
-* Update 418 - Signed off on 2025-12-05T03:51:43.308Z
-* Update 421 - Signed off on 2025-12-06T01:40:58.137Z
-* Update 439 - Signed off on 2025-12-12T01:59:29.534Z
-* Update 494 - Signed off on 2025-12-30T03:52:21.874Z
-* Update 596 - Signed off on 2026-02-03T12:53:50.300Z
-* Update 647 - Signed off on 2026-02-21T04:50:56.146Z
-* Update 690 - Signed off on 2026-03-08T17:11:25.599Z
-* Update 717 - Signed off on 2026-03-17T11:26:39.836Z
-* Update 736 - Signed off on 2026-03-24T10:28:58.323Z
-* Update 820 - Signed off on 2026-04-23T09:07:05.125Z
-* Update 823 - Signed off on 2026-04-24T07:20:57.296Z
-* Update 835 - Signed off on 2026-04-28T14:57:22.676Z
-* Update 854 - Signed off on 2026-05-05T12:50:11.613Z
-* Update 913 - Signed off on 2026-05-25T11:16:25.756Z
-* Update 944 - Signed off on 2026-06-05T04:27:35.675Z
-* Update 964 - Signed off on 2026-06-12T20:20:52.154Z
-* Update 965 - Signed off on 2026-06-13T04:00:12.381Z
-* Update 984 - Signed off on 2026-06-19T23:43:09.608Z
+The EVM smart contract logic is implemented in Solidity (`contracts/SpooVault.sol`).
+
+## Core Functions
+- `createVault(string name, string description, address[] guardians, uint256 threshold)`: Initializes a vault record.
+- `addDocument(uint256 vaultId, string encryptedMetadata, string ipfsHash, uint8 requiredAccess)`: Adds a document reference.
+- `requestAccess(uint256 documentId)`: Registers a beneficiary access request.
+- `approveAccess(uint256 requestId, string encryptedShare)`: Signs off on a request and uploads the SSS share encrypted for the beneficiary.
+- `acceptGuardianInvite(uint256 vaultId)`: Registers acceptance of a guardian role.
+
+The EVM system is compiled and deployed locally using Hardhat and ethers.js.

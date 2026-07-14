@@ -1,54 +1,17 @@
-# Developer Notes - Part 14
+# Hosting Deployment to Firebase & Testnets
 
-This document tracks progress, updates, and code reviews.
-* Update 63 - Signed off on 2025-08-04T08:20:48.609Z
-* Update 83 - Signed off on 2025-08-10T21:47:39.103Z
-* Update 89 - Signed off on 2025-08-12T20:47:35.354Z
-* Update 101 - Signed off on 2025-08-17T00:46:27.833Z
-* Update 133 - Signed off on 2025-08-28T12:31:09.123Z
-* Update 140 - Signed off on 2025-08-30T21:50:17.498Z
-* Update 176 - Signed off on 2025-09-12T15:35:10.861Z
-* Update 211 - Signed off on 2025-09-24T18:19:07.958Z
-* Update 255 - Signed off on 2025-10-09T20:28:18.825Z
-* Update 270 - Signed off on 2025-10-15T01:48:14.705Z
-* Update 272 - Signed off on 2025-10-15T17:21:45.832Z
-* Update 308 - Signed off on 2025-10-28T00:47:07.047Z
-* Update 311 - Signed off on 2025-10-29T06:11:52.070Z
-* Update 317 - Signed off on 2025-10-31T07:15:18.244Z
-* Update 341 - Signed off on 2025-11-08T16:55:02.048Z
-* Update 349 - Signed off on 2025-11-11T08:39:31.855Z
-* Update 374 - Signed off on 2025-11-20T04:19:14.048Z
-* Update 376 - Signed off on 2025-11-21T00:14:10.580Z
-* Update 412 - Signed off on 2025-12-02T23:33:16.787Z
-* Update 433 - Signed off on 2025-12-10T07:50:12.603Z
-* Update 443 - Signed off on 2025-12-13T15:28:43.092Z
-* Update 484 - Signed off on 2025-12-26T14:58:50.382Z
-* Update 495 - Signed off on 2025-12-30T15:24:04.610Z
-* Update 508 - Signed off on 2026-01-04T07:28:51.319Z
-* Update 510 - Signed off on 2026-01-04T21:32:57.857Z
-* Update 557 - Signed off on 2026-01-21T01:45:31.743Z
-* Update 559 - Signed off on 2026-01-21T13:41:44.533Z
-* Update 583 - Signed off on 2026-01-30T01:02:56.847Z
-* Update 587 - Signed off on 2026-01-31T09:37:32.305Z
-* Update 612 - Signed off on 2026-02-09T11:14:22.488Z
-* Update 614 - Signed off on 2026-02-10T03:54:12.294Z
-* Update 626 - Signed off on 2026-02-13T21:13:37.282Z
-* Update 643 - Signed off on 2026-02-20T02:05:01.810Z
-* Update 671 - Signed off on 2026-03-01T11:49:00.187Z
-* Update 687 - Signed off on 2026-03-07T14:36:34.139Z
-* Update 698 - Signed off on 2026-03-11T05:28:00.511Z
-* Update 702 - Signed off on 2026-03-12T19:18:07.107Z
-* Update 716 - Signed off on 2026-03-17T03:26:45.412Z
-* Update 735 - Signed off on 2026-03-23T22:36:17.106Z
-* Update 803 - Signed off on 2026-04-17T06:13:32.241Z
-* Update 805 - Signed off on 2026-04-17T21:10:52.522Z
-* Update 811 - Signed off on 2026-04-20T02:44:59.821Z
-* Update 827 - Signed off on 2026-04-25T16:45:46.180Z
-* Update 828 - Signed off on 2026-04-26T02:08:14.504Z
-* Update 844 - Signed off on 2026-05-01T19:27:28.101Z
-* Update 863 - Signed off on 2026-05-08T07:11:40.550Z
-* Update 865 - Signed off on 2026-05-09T00:30:09.379Z
-* Update 870 - Signed off on 2026-05-10T14:08:02.827Z
-* Update 919 - Signed off on 2026-05-27T17:34:18.839Z
-* Update 932 - Signed off on 2026-06-01T05:55:37.845Z
-* Update 945 - Signed off on 2026-06-05T11:08:15.736Z
+SpooVault is built for serverless hosting environments.
+
+## Frontend Deployment (Firebase Hosting)
+1. Build the production application bundle:
+   ```bash
+   npm run build
+   ```
+2. Deploy hosting resources:
+   ```bash
+   firebase deploy --only hosting
+   ```
+
+## Contract Deployments
+- **Solidity**: Deployed on Avalanche Fuji Testnet via `npm run deploy:contract`.
+- **Soroban**: Compiled to WASM and deployed using Soroban CLI to Stellar Testnet.
